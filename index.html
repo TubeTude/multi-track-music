@@ -1,0 +1,2503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Multi-Track Music</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #000;
+      display: flex; align-items: stretch; justify-content: flex-end;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      overflow: hidden;
+      -webkit-app-region: no-drag;
+    }
+    /* ══════════════ LEFT MIXER PANEL — late-80s/early-90s console ══════════════ */
+    #left-panel {
+      flex: 1; height: 100%;
+      background: #0c0c09;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      padding: 12px 12px 10px;
+      gap: 8px;
+      overflow: hidden;
+      border-right: 2px solid #1a1a12;
+    }
+
+    /* ── Logo / file header ── */
+    .mx-header {
+      display: flex; align-items: center; gap: 10px;
+      align-self: stretch;
+      background: #0e0e0b;
+      border: 1px solid #1e1e14;
+      border-radius: 4px;
+      padding: 7px 12px;
+      flex-shrink: 0;
+    }
+    .mx-header img {
+      width: 26px; height: 26px; border-radius: 5px; object-fit: cover;
+    }
+    .mx-header-text { display: flex; flex-direction: column; gap: 2px; }
+    .mx-header-name {
+      font-size: 7px; font-weight: 800; letter-spacing: 3px; color: #3a3220;
+      text-transform: uppercase; font-family: 'SF Mono', monospace;
+    }
+    .mx-header-file {
+      font-size: 9px; color: #c87818; font-family: 'SF Mono', monospace;
+      max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    /* ── Phosphor timecode display ── */
+    #mx-timecode {
+      font-family: 'SF Mono', 'Courier New', monospace;
+      font-size: 22px; font-weight: 400; letter-spacing: 2px;
+      color: #d8841a;
+      text-shadow: 0 0 8px rgba(216,132,26,0.7), 0 0 22px rgba(216,132,26,0.2);
+      align-self: stretch; text-align: center;
+      background: #060604;
+      border: 1px solid #181410;
+      border-radius: 4px;
+      padding: 7px 4px;
+      flex-shrink: 0;
+    }
+    #mx-timecode.active {
+      color: #f5a030;
+      text-shadow: 0 0 12px rgba(245,160,48,0.9), 0 0 32px rgba(245,160,48,0.3);
+    }
+
+    /* ── Transport row ── */
+    .mx-transport {
+      display: flex; gap: 6px; align-items: center; justify-content: center;
+      align-self: stretch; flex-shrink: 0;
+    }
+    .mx-btn {
+      width: 34px; height: 34px; border-radius: 4px;
+      border: 1px solid #222218; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.1s; background: #111109;
+      -webkit-tap-highlight-color: transparent; flex-shrink: 0;
+    }
+    .mx-btn:active { transform: scale(0.86); }
+    .mx-btn-rec .dot {
+      width: 12px; height: 12px; border-radius: 50%; background: #7a1e0e;
+      transition: background 0.1s;
+    }
+    .mx-btn-rec.active .dot { background: #ff2d20; box-shadow: 0 0 8px rgba(255,45,32,0.9); }
+    .mx-btn-play .tri {
+      width: 0; height: 0;
+      border-top: 7px solid transparent; border-bottom: 7px solid transparent;
+      border-left: 12px solid #3a3a28; margin-left: 2px;
+      transition: border-left-color 0.1s;
+    }
+    .mx-btn-play.active .tri { border-left-color: #d8841a; }
+    .mx-btn-stop .sq {
+      width: 11px; height: 11px; background: #282818; border-radius: 1px;
+      transition: background 0.1s;
+    }
+    .mx-btn-stop:hover .sq { background: #4a4a30; }
+    /* Export button: icon-only square, same size as rec/play/stop */
+    .mx-btn-export { /* inherits .mx-btn base */ }
+    .mx-btn-export svg { stroke: #3a3220; transition: stroke 0.15s; }
+    .mx-btn-export:hover svg { stroke: #d8841a; }
+    .mx-btn-export.spinning svg { animation: exportSpin2 1s linear infinite; }
+    @keyframes exportSpin2 { to { transform: rotate(360deg); } }
+
+    /* ── Export progress bar ── */
+    .mx-export-bar {
+      align-self: stretch; height: 2px; border-radius: 1px;
+      background: #0e0e0b; overflow: hidden;
+      display: none; flex-shrink: 0;
+    }
+    .mx-export-bar.visible { display: block; }
+    .mx-export-bar-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(to right, #7a4a08, #d8841a, #f5c060);
+      border-radius: 1px; transition: width 0.15s linear;
+    }
+
+    /* ── Divider ── */
+    .mx-divider {
+      align-self: stretch; height: 1px; flex-shrink: 0;
+      background: #1a1a12;
+    }
+
+    /* ── Channel strips — fixed uniform widths per group ── */
+    .mx-strips {
+      display: flex; gap: 6px; align-items: stretch;
+      justify-content: center;
+      align-self: stretch;
+      flex: 1; min-height: 0;
+      padding: 0 2px;
+    }
+    /* 1-6 tracks → 62px each; 7-12 tracks → 44px each */
+    .mx-strip {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 5px;
+      background: #0e0e0b;
+      border: 1px solid #1c1c12;
+      border-radius: 3px;
+      padding: 7px 3px 5px;
+      width: 62px; flex: none; overflow: hidden;
+    }
+    .mx-strips.many .mx-strip { width: 44px; gap: 3px; padding: 5px 2px 4px; }
+    .mx-track-num {
+      font-size: 6px; font-weight: 800; letter-spacing: 1px;
+      font-family: 'SF Mono', monospace; color: #282818;
+      text-transform: uppercase; flex-shrink: 0;
+    }
+
+    /* ── Phosphor VU meter ── */
+    .mx-bars {
+      flex: 1; align-self: stretch; min-height: 0;
+      display: flex; flex-direction: column-reverse; gap: 1.5px;
+      padding: 0 3px;
+    }
+    .mx-bar-seg {
+      align-self: stretch; flex: 1; min-height: 2px; max-height: 7px;
+      border-radius: 1px; background: #0a0a08;
+    }
+    /* Green zone — phosphor glow */
+    .mx-bar-seg.on-lo  { background: #00c838; box-shadow: 0 0 5px rgba(0,200,56,0.6); }
+    /* Yellow zone */
+    .mx-bar-seg.on-mid { background: #d4b400; box-shadow: 0 0 5px rgba(212,180,0,0.55); }
+    /* Red zone */
+    .mx-bar-seg.on-hi  { background: #ff2020; box-shadow: 0 0 6px rgba(255,32,32,0.7); }
+
+    /* ── Mini knobs stacked vertically ── */
+    .mx-mini-knobs {
+      display: flex; flex-direction: column; gap: 5px;
+      align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .mx-mini-knob {
+      width: 24px; height: 24px; border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #262620, #0a0a08);
+      border: 1px solid #252518;
+      position: relative; cursor: pointer;
+      box-shadow: 0 3px 7px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.04);
+      user-select: none; flex-shrink: 0;
+      --knob-rot: -135deg;
+    }
+    .mx-mini-knob::after {
+      content: '';
+      position: absolute; top: 3px; left: 50%;
+      width: 2px; height: 5px; border-radius: 1px;
+      background: #d8841a;
+      transform-origin: 50% calc(100% + 9px);
+      transform: translateX(-50%) rotate(var(--knob-rot));
+    }
+    .mx-mini-knob.eq-knob::after  { background: #3a8ae8; }
+    .mx-mini-knob.cmp-knob::after { background: #a060d8; }
+    .mx-mini-knob.rev-knob::after { background: #18b060; }
+    /* Narrower knobs for many-track mode */
+    .mx-strips.many .mx-mini-knob { width: 18px; height: 18px; }
+    .mx-strips.many .mx-mini-knob::after { top: 2px; height: 4px;
+      transform-origin: 50% calc(100% + 7px); }
+
+    /* ── Custom analog fader — tall ── */
+    .mx-fader-wrap {
+      position: relative; align-self: stretch;
+      height: 120px; flex-shrink: 0;
+    }
+    .mx-strips.many .mx-fader-wrap { height: 88px; }
+    .mx-fader-track {
+      position: absolute; top: 3px; bottom: 3px; left: 50%;
+      transform: translateX(-50%);
+      width: 3px; background: #060604;
+      border: 1px solid #181410; border-radius: 2px;
+    }
+    /* Tick marks on the track */
+    .mx-fader-track::before, .mx-fader-track::after {
+      content: ''; position: absolute; left: -3px; right: -3px;
+      height: 1px; background: #1e1e14;
+    }
+    .mx-fader-track::before { top: 33%; }
+    .mx-fader-track::after  { top: 66%; }
+    .mx-fader-cap {
+      position: absolute; left: 50%;
+      transform: translateX(-50%);
+      width: 15px; height: 9px;
+      background: linear-gradient(180deg,
+        #323228 0%, #222218 35%, #1a1a12 50%, #28281e 65%, #1a1a12 100%);
+      border: 1px solid #3a3828;
+      border-radius: 2px;
+      cursor: ns-resize;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.06);
+      display: flex; align-items: center; justify-content: center;
+      user-select: none; z-index: 1;
+    }
+    /* Center stripe on fader cap */
+    .mx-fader-cap::before {
+      content: '';
+      width: 8px; height: 1px; background: #484830;
+    }
+
+    /* Track label at bottom */
+    .mx-track-label {
+      font-size: 6px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: #28281a;
+      font-family: 'SF Mono', monospace; flex-shrink: 0;
+    }
+
+    /* ── Bottom 3 master knobs ── */
+    .mx-knobs { display: flex; gap: 16px; align-items: flex-end; justify-content: center; flex-shrink: 0; }
+    .mx-knob-wrap {
+      display: flex; flex-direction: column; align-items: center; gap: 5px;
+    }
+    .mx-knob {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: radial-gradient(circle at 38% 32%, #2c2c20, #0e0e0a);
+      border: 1.5px solid #242418;
+      position: relative; cursor: pointer;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.9), inset 0 1px 0 rgba(255,255,255,0.03);
+      user-select: none; --knob-rot: -135deg;
+    }
+    .mx-knob::after {
+      content: '';
+      position: absolute; top: 5px; left: 50%;
+      width: 2.5px; height: 8px; border-radius: 1.5px;
+      background: #d8841a;
+      transform-origin: 50% calc(100% + 13px);
+      transform: translateX(-50%) rotate(var(--knob-rot));
+    }
+    .mx-knob-label {
+      font-size: 7px; font-weight: 800; letter-spacing: 2px;
+      text-transform: uppercase; color: #2c2c1c;
+      font-family: 'SF Mono', monospace;
+    }
+    #shell { background: #111; position: relative; overflow: hidden; flex-shrink: 0;
+             width: 430px; height: 100vh; /* JS overrides width; height always fills viewport */ }
+
+    /* ══════════════ SHARED SCREEN LAYER ══════════════ */
+    .screen {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      transition: opacity 0.3s;
+    }
+    .screen.hidden { opacity: 0; pointer-events: none; }
+
+    /* ══════════════ LANDING ══════════════ */
+    #landing { padding: 40px 28px; gap: 0; }
+    #landing .app-logo {
+      width: 88px; height: 88px;
+      border-radius: 22px;
+      margin-bottom: 14px;
+      /* subtle drop shadow so it lifts off the dark bg */
+      filter: drop-shadow(0 4px 18px rgba(0,0,0,0.7));
+    }
+    #landing h1 {
+      color: #fff; font-size: 28px; font-weight: 700;
+      letter-spacing: -0.5px; margin-bottom: 6px;
+    }
+    #landing .sub {
+      color: rgba(255,255,255,0.75); font-size: 15px; text-align: center;
+      line-height: 1.7; margin-bottom: 28px; font-weight: 500;
+    }
+    .section-label {
+      font-size: 9px; letter-spacing: 2.5px; text-transform: uppercase;
+      color: #333; margin-bottom: 10px; font-weight: 600; align-self: flex-start;
+      padding-left: 2px;
+    }
+    .layout-picker {
+      display: flex; gap: 8px; margin-bottom: 28px; flex-wrap: wrap;
+      justify-content: center; align-self: stretch;
+    }
+    .layout-opt {
+      flex: 1; min-width: 44px; max-width: 60px;
+      height: 54px;
+      background: #171717; border: 1px solid #222; border-radius: 10px;
+      cursor: pointer; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 5px;
+      transition: border-color 0.15s, background 0.15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .layout-opt:active { transform: scale(0.9); }
+    .layout-opt.selected { border-color: #1e6fe8; background: #0d1a2e; }
+    .layout-opt .g-icon { display: grid; gap: 2px; }
+    .layout-opt .g-dot { width: 5px; height: 7px; border-radius: 1px; background: #2e2e2e; }
+    .layout-opt.selected .g-dot { background: #1e6fe8; }
+    .layout-opt .g-n { font-size: 8px; font-weight: 700; color: #333; }
+    .layout-opt.selected .g-n { color: #1e6fe8; }
+
+    .land-btn {
+      background: #fff; color: #111;
+      border: none; border-radius: 12px;
+      padding: 13px 28px; font-size: 14px; font-weight: 600;
+      cursor: pointer; display: flex; align-items: center; gap: 8px;
+      transition: transform 0.1s, background 0.1s;
+      -webkit-tap-highlight-color: transparent; user-select: none;
+    }
+    .land-btn:active { transform: scale(0.93); background: #e5e5e5; }
+
+    /* ══════════════ DEVICE STEP ══════════════ */
+    #deviceStep { padding: 36px 28px; gap: 0; align-items: stretch; }
+    #deviceStep h2 {
+      color: #fff; font-size: 18px; font-weight: 600;
+      letter-spacing: -0.3px; margin-bottom: 28px; text-align: center;
+    }
+    .device-block { margin-bottom: 20px; }
+    .device-block label {
+      display: block; font-size: 9px; letter-spacing: 2px;
+      text-transform: uppercase; color: #444; font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .device-select {
+      width: 100%; background: #161616; color: #ccc;
+      border: 1px solid #2a2a2a; border-radius: 10px;
+      padding: 11px 14px; font-size: 13px;
+      -webkit-appearance: none; appearance: none;
+      cursor: pointer;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23444' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px;
+    }
+    .device-select:focus { outline: none; border-color: #444; }
+    .device-select option { background: #1a1a1a; }
+    .device-hint {
+      font-size: 10px; color: #2e2e2e; margin-top: 6px;
+      font-family: 'SF Mono', monospace; letter-spacing: 0.3px;
+    }
+    .device-actions {
+      display: flex; gap: 10px; margin-top: 30px;
+    }
+    .dev-btn {
+      flex: 1; padding: 13px; border-radius: 11px;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      border: none; transition: transform 0.1s, background 0.1s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .dev-btn:active { transform: scale(0.94); }
+    .dev-btn.back { background: #1a1a1a; color: #555; border: 1px solid #252525; }
+    .dev-btn.back:active { background: #111; }
+    .dev-btn.go   { background: #fff; color: #111; }
+    .dev-btn.go:active { background: #e0e0e0; }
+
+    /* ══════════════ APP ══════════════ */
+    #app { justify-content: flex-start; align-items: stretch; }
+
+    /* ══════════════ GRID — fills the full 9:16 shell ══════════════ */
+    #trackGrid {
+      display: grid;
+      grid-template-columns: repeat(var(--n-cols), 1fr);
+      grid-template-rows:    repeat(var(--n-rows), 1fr);
+      gap: 2px;
+      flex: 1;               /* fill all remaining vertical space */
+      align-self: stretch;   /* stretch to shell width */
+      min-height: 0;
+    }
+
+    /* ══════════════ CARD — fills its grid cell at whatever ratio ══════════════ */
+    .track-card {
+      background: #161616; border-radius: 0;
+      border: 1.5px solid transparent; overflow: hidden;
+      position: relative;
+      display: flex; align-items: center; justify-content: center;
+      cursor: default; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .track-card.empty { cursor: pointer; }
+    .track-card.empty:active { background: #1e1e1e; }
+    .track-card.camera-active {
+      border-color: #1e6fe8; border-width: 2px;
+      box-shadow: 0 0 0 2px rgba(30,111,232,0.3);
+    }
+    .track-card.recording-active {
+      border-color: #ff2020; border-width: 2.5px;
+      animation: recBorder 0.9s ease-in-out infinite;
+    }
+    @keyframes recBorder {
+      0%,100% { box-shadow: 0 0 0 3px rgba(255,32,32,0.5); }
+      50%      { box-shadow: 0 0 0 7px rgba(255,32,32,0.1); }
+    }
+    .tap-hint {
+      display: flex; flex-direction: column;
+      align-items: center; gap: 4px; pointer-events: none;
+    }
+    .tap-hint svg { width: 18px; height: 18px; stroke: #2a2a2a; }
+    .tap-hint span { font-size: 8px; color: #282828; font-weight: 500; }
+    .track-card video {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+    }
+    .track-card video.selfie { transform: scaleX(-1); }
+
+    /* ══════════════ VU OVERLAY ══════════════ */
+    .vu-overlay {
+      position: absolute; bottom: 6px; left: 6px;
+      width: 2px; height: 52%;
+      display: flex; flex-direction: column-reverse; gap: 1px;
+      z-index: 5; pointer-events: none;
+    }
+    .vu-seg {
+      flex: 1; border-radius: 1px;
+      background: transparent;
+    }
+    .vu-seg.on.grn { background: rgba(30,220,100,0.55); }
+    .vu-seg.on.yel { background: rgba(240,190,20,0.6); }
+    .vu-seg.on.red { background: rgba(255,40,40,0.7); }
+
+    /* ══════════════ SOLO / VIEW BUTTON — lives in the mixer strip ══════════════ */
+    .mx-solo-btn {
+      align-self: stretch; flex-shrink: 0;
+      height: 18px; padding: 0;
+      background: #080806;
+      border: 1px solid #1c1c12;
+      border-radius: 2px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.12s, border-color 0.12s;
+    }
+    .mx-solo-btn svg { stroke: #262616; transition: stroke 0.12s, filter 0.12s; }
+    .mx-solo-btn:hover { background: #111108; border-color: #2e2e1e; }
+    .mx-solo-btn:hover svg { stroke: #4a4a2e; }
+    .mx-solo-btn.active {
+      background: rgba(216,132,26,0.18);
+      border-color: rgba(216,132,26,0.45);
+    }
+    .mx-solo-btn.active svg {
+      stroke: #d8841a;
+      filter: drop-shadow(0 0 4px rgba(216,132,26,0.8));
+    }
+    .mx-strips.many .mx-solo-btn { height: 14px; }
+
+    /* ── Strip + (add to fullscreen) button ── */
+    .mx-add-btn {
+      flex-shrink: 0; height: 18px; padding: 0;
+      background: #080806;
+      border: 1px solid #1c1c12;
+      border-radius: 2px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.08s, border-color 0.08s, color 0.08s;
+      color: #262616; font-size: 14px; font-weight: 300; line-height: 1;
+    }
+    .mx-add-btn:hover { background: #111108; border-color: #2e2e1e; color: #4a4a2e; }
+    .mx-add-btn.active {
+      background: rgba(216,132,26,0.18); border-color: rgba(216,132,26,0.5);
+      color: #d8841a;
+    }
+    .mx-strips.many .mx-add-btn { height: 14px; font-size: 12px; }
+
+    /* ── Mixer layout bar — compact live switcher ── */
+    .mx-layout-bar {
+      display: flex; gap: 3px; align-self: stretch;
+      justify-content: center; flex-shrink: 0;
+      flex-wrap: wrap; padding: 0 2px;
+    }
+    .mx-layout-opt {
+      width: 26px; height: 26px;
+      background: #0e0e0b; border: 1px solid #1c1c12;
+      border-radius: 5px; cursor: pointer;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 2px;
+      -webkit-tap-highlight-color: transparent; flex-shrink: 0;
+    }
+    .mx-layout-opt:active { transform: scale(0.88); }
+    .mx-layout-opt.active { border-color: #1e6fe8; background: rgba(30,111,232,0.12); }
+    .mx-layout-opt .ml-icon { display: grid; gap: 1.5px; }
+    .mx-layout-opt .ml-dot {
+      width: 3.5px; height: 4px; border-radius: 0.5px; background: #2e2e28;
+    }
+    .mx-layout-opt.active .ml-dot { background: #1e6fe8; }
+    .mx-layout-opt .ml-n {
+      font-size: 5px; font-weight: 700; color: #2e2e28;
+      font-family: 'SF Mono', monospace; line-height: 1;
+    }
+    .mx-layout-opt.active .ml-n { color: #1e6fe8; }
+
+    /* Solo/fullscreen is now handled by #fs-overlay canvas — no CSS grid tricks needed */
+
+    /* ══════════════ FULLSCREEN OVERLAY ══════════════ */
+    #fs-overlay {
+      position: absolute; inset: 0; z-index: 80;
+      background: #000; cursor: pointer;
+    }
+    #fs-canvas { display: block; width: 100%; height: 100%; }
+    #fs-hint {
+      position: absolute; bottom: 10px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 8px; letter-spacing: 2px; text-transform: uppercase;
+      color: rgba(255,255,255,0.18); font-family: 'SF Mono', monospace;
+      pointer-events: none; white-space: nowrap;
+    }
+
+    /* ══════════════ TRANSPORT ══════════════ */
+    .transport {
+      display: flex; flex-direction: column;
+      justify-content: center; align-items: center;
+      gap: 6px; flex-shrink: 0;
+      height: var(--transport-h);
+      width: 100%; padding: 0 20px;
+    }
+
+    /* ══════════════ MIXDOWN DROP (left panel) ══════════════ */
+    #mixdownDrop {
+      display: flex; align-items: center; gap: 7px;
+      align-self: stretch; flex-shrink: 0;
+      height: 32px;
+      background: #080806; border: 1px dashed #1c1c12; border-radius: 3px;
+      cursor: pointer; padding: 0 10px; overflow: hidden;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    #mixdownDrop.drag-over { border-color: #d8841a; background: #110e06; }
+    #mixdownDrop.loaded { border-style: solid; border-color: #252518; background: #0e0e0b; }
+    #mixdownDrop svg { flex-shrink: 0; stroke: #252518; }
+    #mixdownDrop.drag-over svg { stroke: #d8841a; }
+    #mixdownLabel {
+      font-size: 7px; letter-spacing: 1.5px; text-transform: uppercase;
+      color: #252518; font-weight: 800; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; flex: 1;
+      font-family: 'SF Mono', monospace;
+    }
+    #mixdownDrop.loaded #mixdownLabel { color: #d8841a; letter-spacing: 0; text-transform: none; font-size: 8px; }
+    #mixdownClear {
+      display: none; flex-shrink: 0;
+      background: none; border: none; cursor: pointer;
+      color: #252518; font-size: 11px; line-height: 1; padding: 0;
+    }
+    #mixdownDrop.loaded #mixdownClear { display: block; }
+    #mixdownClear:hover { color: #666650; }
+
+    /* ══════════════ TRACK BADGE ══════════════ */
+    .track-badge {
+      position: absolute; top: 6px; left: 6px; z-index: 4;
+      font-size: 8px; font-weight: 700; letter-spacing: 0.5px;
+      color: rgba(255,255,255,0.3); background: rgba(0,0,0,0.45);
+      border-radius: 4px; padding: 2px 5px;
+      font-family: 'SF Mono', monospace; pointer-events: none;
+    }
+
+    /* ══════════════ PENDING OVERLAY ══════════════ */
+    .track-card.pending { border-color: rgba(30,111,232,0.3); }
+    .track-card.drag-target {
+      border-color: rgba(30,111,232,0.75) !important;
+      background: rgba(30,111,232,0.10);
+      box-shadow: inset 0 0 0 2px rgba(30,111,232,0.25);
+    }
+    .track-card img {
+      position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover;
+      pointer-events: none;
+    }
+    .pending-overlay {
+      position: absolute; bottom: 0; left: 0; right: 0; z-index: 6;
+      display: flex; gap: 4px; padding: 6px 6px 7px;
+      background: linear-gradient(transparent, rgba(0,0,0,0.88));
+    }
+    .pend-btn {
+      flex: 1; padding: 7px 0; border: none; border-radius: 7px;
+      font-size: 11px; font-weight: 700; cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.1s, opacity 0.1s;
+    }
+    .pend-btn:active { transform: scale(0.92); }
+    .pend-redo { background: rgba(35,35,35,0.95); color: #555; }
+    .pend-keep { background: rgba(30,111,232,0.9);  color: #fff; }
+
+    /* ══════════════ EXPORT BUTTON ══════════════ */
+    .btn-export svg { stroke: #3a3a3a; transition: stroke 0.15s; }
+    .btn-export:not([disabled]):hover svg { stroke: #1e6fe8; }
+    .btn-export[disabled] { opacity: 0.3; cursor: not-allowed; }
+    .btn-export[disabled]:active { transform: none; background: #151515; }
+    .btn-export.exporting svg { stroke: #1e6fe8; animation: exportSpin 1.1s linear infinite; }
+    @keyframes exportSpin {
+      0%   { transform: rotate(0deg);   }
+      100% { transform: rotate(360deg); }
+    }
+    #timerDisplay {
+      font-size: 11px; font-variant-numeric: tabular-nums;
+      font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+      color: #333; letter-spacing: 1px; font-weight: 500;
+      align-self: flex-start;
+      transition: color 0.2s;
+    }
+    #timerDisplay.active { color: #1e6fe8; }
+    .transport-btns { display: flex; gap: 18px; align-items: center; }
+    .transport-btn {
+      width: 50px; height: 50px;
+      background: #151515; border-radius: 13px;
+      border: 1px solid #222;
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: transform 0.1s, background 0.1s; user-select: none;
+    }
+    .transport-btn:active { transform: scale(0.87); background: #0d0d0d; }
+    .btn-record .icon {
+      width: 18px; height: 18px; border-radius: 50%; background: #1e6fe8;
+    }
+    .btn-record.recording .icon {
+      background: #ff2020; animation: pulse 1s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 3px rgba(255,32,32,0.3); }
+      50%      { box-shadow: 0 0 0 7px rgba(255,32,32,0.07); }
+    }
+    .btn-play .icon {
+      width: 0; height: 0;
+      border-top: 10px solid transparent; border-bottom: 10px solid transparent;
+      border-left: 17px solid #1e6fe8; margin-left: 3px;
+    }
+    .btn-play.playing .icon {
+      border: none; width: 18px; height: 18px; display: flex; gap: 4px; margin-left: 0;
+    }
+    .btn-play.playing .icon::before, .btn-play.playing .icon::after {
+      content: ''; display: block; width: 5px; height: 18px;
+      background: #1e6fe8; border-radius: 2px;
+    }
+
+    /* ══════════════ TOAST ══════════════ */
+    #saveToast {
+      position: absolute; bottom: 18px; left: 50%;
+      transform: translateX(-50%) translateY(10px);
+      background: #1a1a1a; color: #bbb; font-size: 11px;
+      padding: 7px 15px; border-radius: 20px;
+      white-space: nowrap; opacity: 0; pointer-events: none;
+      transition: opacity 0.25s, transform 0.25s;
+      z-index: 20; border: 1px solid #272727; max-width: 88%; text-align: center;
+    }
+    #saveToast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #saveToast.is-error { border-color: #7a2222; color: #ff7070; }
+  </style>
+</head>
+<body>
+<div id="left-panel">
+  <!-- Logo + project name -->
+  <div class="mx-header">
+    <img src="assets/musicmem.png" alt="logo" />
+    <div class="mx-header-text">
+      <div class="mx-header-name">Multi-Track Music</div>
+      <div class="mx-header-file" id="mxFileName">No project open</div>
+    </div>
+  </div>
+
+  <div id="mx-timecode">0:00</div>
+
+  <!-- Transport — all controls on mixer side -->
+  <div class="mx-transport">
+    <button class="mx-btn mx-btn-rec"  id="mxBtnRec"    title="Record"><div class="dot"></div></button>
+    <button class="mx-btn mx-btn-play" id="mxBtnPlay"   title="Play"><div class="tri"></div></button>
+    <button class="mx-btn mx-btn-stop" id="mxBtnStop"   title="Stop"><div class="sq"></div></button>
+    <button class="mx-btn mx-btn-export" id="mxBtnExport" title="Export 9:16">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+        <polyline points="7 10 12 15 17 10"/>
+        <line x1="12" y1="15" x2="12" y2="3"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Export progress bar (hidden until export starts) -->
+  <div class="mx-export-bar" id="mxExportBar">
+    <div class="mx-export-bar-fill" id="mxExportFill"></div>
+  </div>
+
+  <div class="mx-divider"></div>
+
+  <!-- Live layout switcher — available during active session -->
+  <div class="mx-layout-bar" id="mxLayoutBar"></div>
+
+  <div class="mx-divider"></div>
+
+  <!-- Channel Strips (count matches selected layout) -->
+  <div class="mx-strips" id="mxStrips">
+    <!-- built by JS -->
+  </div>
+
+  <div class="mx-divider"></div>
+
+  <!-- 3 Master Knobs -->
+  <div class="mx-knobs">
+    <div class="mx-knob-wrap">
+      <div class="mx-knob" data-knob="0" data-val="50"></div>
+      <div class="mx-knob-label">EQ</div>
+    </div>
+    <div class="mx-knob-wrap">
+      <div class="mx-knob" data-knob="1" data-val="50"></div>
+      <div class="mx-knob-label">Reverb</div>
+    </div>
+    <div class="mx-knob-wrap">
+      <div class="mx-knob" data-knob="2" data-val="50"></div>
+      <div class="mx-knob-label">Master</div>
+    </div>
+  </div>
+
+  <div class="mx-divider"></div>
+
+  <!-- Mixdown override drop zone -->
+  <div id="mixdownDrop">
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke-width="2"
+         stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+    </svg>
+    <span id="mixdownLabel">Drop Mixdown Audio</span>
+    <button id="mixdownClear" title="Remove mixdown">✕</button>
+  </div>
+</div>
+<div id="shell">
+
+  <!-- ── STEP 1: Layout + folder ── -->
+  <div id="landing" class="screen">
+    <img src="assets/musicmem.png" alt="Multi-Track Music" class="app-logo" />
+    <p class="sub">Multi-track recorder.<br>Video + WAV, separate files.</p>
+    <div class="section-label">tracks</div>
+    <div class="layout-picker" id="layoutPicker"></div>
+    <button class="land-btn" id="btnSelectFolder">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+      </svg>
+      Select Folder
+    </button>
+  </div>
+
+  <!-- ── STEP 2: Device selection ── -->
+  <div id="deviceStep" class="screen hidden">
+    <h2>Choose inputs</h2>
+    <div class="device-block">
+      <label>Camera</label>
+      <select class="device-select" id="cameraSelect"></select>
+      <div class="device-hint" id="cameraHint"></div>
+    </div>
+    <div class="device-block">
+      <label>Microphone / Audio interface</label>
+      <select class="device-select" id="audioSelect"></select>
+      <div class="device-hint" id="audioHint"></div>
+    </div>
+    <div class="device-actions">
+      <button class="dev-btn back" id="btnDevBack">← Back</button>
+      <button class="dev-btn go"   id="btnDevStart">Start →</button>
+    </div>
+  </div>
+
+  <!-- ── APP ── -->
+  <div id="app" class="screen hidden">
+    <div id="trackGrid"></div>
+    <div id="saveToast"></div>
+  </div>
+
+  <!-- ── Fullscreen overlay (canvas-based, covers entire 9:16 shell) ── -->
+  <div id="fs-overlay" style="display:none">
+    <canvas id="fs-canvas"></canvas>
+    <div id="fs-hint">tap to exit</div>
+  </div>
+
+  <!-- Hidden JS-compat elements: state lives here, never shown -->
+  <div id="jsCtrl" style="display:none;position:absolute;pointer-events:none">
+    <div id="timerDisplay">0:00 / —</div>
+    <button id="btnRecord" class="transport-btn btn-record"><span class="icon"></span></button>
+    <button id="btnPlay"   class="transport-btn btn-play"><span class="icon"></span></button>
+    <button id="btnExport" class="transport-btn btn-export" disabled></button>
+    <div id="folderStrip"><span id="folderName">—</span></div>
+  </div>
+
+</div>
+<script>
+/* ════════════════════════════════════════════════════
+   WAV WORKLET
+════════════════════════════════════════════════════ */
+const WORKLET_SRC = `
+class WavRecorderProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this._chunks = []; this._rec = false;
+    this.port.onmessage = ({ data }) => {
+      if (data === 'start') { this._rec = true; this._chunks = []; }
+      if (data === 'stop')  { this._flush(); }
+    };
+  }
+  _flush() {
+    this._rec = false;
+    let total = 0;
+    for (const c of this._chunks) total += c.length;
+    const out = new Float32Array(total);
+    let off = 0;
+    for (const c of this._chunks) { out.set(c, off); off += c.length; }
+    this.port.postMessage({ type: 'done', samples: out }, [out.buffer]);
+    this._chunks = [];
+  }
+  process(inputs) {
+    if (this._rec) {
+      const ch = inputs[0]?.[0];
+      if (ch) this._chunks.push(new Float32Array(ch));
+    }
+    return true;
+  }
+}
+registerProcessor('wav-recorder', WavRecorderProcessor);
+`;
+
+/* ════════════════════════════════════════════════════
+   WAV ENCODER  (32-bit float, Ableton/Logic native)
+════════════════════════════════════════════════════ */
+function encodeWAV(samples, sr) {
+  const bps = 4, db = samples.length * bps;
+  const buf = new ArrayBuffer(44 + db);
+  const v   = new DataView(buf);
+  const s   = (o, t) => [...t].forEach((c,i) => v.setUint8(o+i, c.charCodeAt(0)));
+  s(0,'RIFF'); v.setUint32(4,36+db,true);
+  s(8,'WAVE'); s(12,'fmt '); v.setUint32(16,16,true);
+  v.setUint16(20,3,true); v.setUint16(22,1,true);
+  v.setUint32(24,sr,true); v.setUint32(28,sr*bps,true);
+  v.setUint16(32,bps,true); v.setUint16(34,32,true);
+  s(36,'data'); v.setUint32(40,db,true);
+  new Float32Array(buf,44).set(samples);
+  return buf;
+}
+
+/* ════════════════════════════════════════════════════
+   LAYOUTS
+════════════════════════════════════════════════════ */
+// Build cells[] for a uniform grid (used by symmetric layouts)
+function makeCells(cols, rows) {
+  const cells = [];
+  for (let r = 0; r < rows; r++)
+    for (let c = 0; c < cols; c++)
+      cells.push({ col: c, row: r, cSpan: 1, rSpan: 1 });
+  return cells;
+}
+
+const LAYOUTS = [
+  { n:2,  cols:2, rows:1, label:'2',  cells: makeCells(2,1) },
+  { n:4,  cols:2, rows:2, label:'4',  cells: makeCells(2,2) },
+  { n:6,  cols:2, rows:3, label:'6',  cells: makeCells(2,3) },
+  { n:8,  cols:4, rows:2, label:'8',  cells: makeCells(4,2) },
+  { n:12, cols:4, rows:3, label:'12', cells: makeCells(4,3) },
+  // ── Asymmetric layouts (mixer-only; hidden in landing picker) ────────────
+  { n:3, cols:2, rows:2, label:'T', asym:true, cells: [
+    { col:0, row:0, cSpan:1, rSpan:1 },
+    { col:1, row:0, cSpan:1, rSpan:1 },
+    { col:0, row:1, cSpan:2, rSpan:1 },
+  ]},
+  { n:3, cols:2, rows:2, label:'⊥', asym:true, cells: [
+    { col:0, row:0, cSpan:2, rSpan:1 },
+    { col:0, row:1, cSpan:1, rSpan:1 },
+    { col:1, row:1, cSpan:1, rSpan:1 },
+  ]},
+  { n:3, cols:2, rows:2, label:'L', asym:true, cells: [
+    { col:0, row:0, cSpan:1, rSpan:2 },
+    { col:1, row:0, cSpan:1, rSpan:1 },
+    { col:1, row:1, cSpan:1, rSpan:1 },
+  ]},
+];
+let currentLayout = LAYOUTS[2];
+
+const pickerEl = document.getElementById('layoutPicker');
+LAYOUTS.filter(l => !l.asym).forEach(layout => {
+  const btn = document.createElement('button');
+  btn.className = 'layout-opt' + (layout === currentLayout ? ' selected' : '');
+  // Icon: render the actual grid shape using cells[]
+  const icon = document.createElement('div');
+  icon.className = 'g-icon';
+  icon.style.display = 'grid';
+  icon.style.gridTemplateColumns = `repeat(${layout.cols}, 5px)`;
+  icon.style.gridTemplateRows    = `repeat(${layout.rows}, 7px)`;
+  icon.style.gap = '2px';
+  layout.cells.forEach(cell => {
+    const d = document.createElement('div'); d.className = 'g-dot';
+    if (cell.cSpan > 1) d.style.gridColumn = `span ${cell.cSpan}`;
+    if (cell.rSpan > 1) d.style.gridRow    = `span ${cell.rSpan}`;
+    icon.appendChild(d);
+  });
+  const lbl = document.createElement('div');
+  lbl.className = 'g-n'; lbl.textContent = layout.label;
+  btn.appendChild(icon); btn.appendChild(lbl);
+  btn.addEventListener('click', () => {
+    currentLayout = layout;
+    pickerEl.querySelectorAll('.layout-opt').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    buildMxLayoutBar(); // keep mixer bar in sync if already open
+  });
+  pickerEl.appendChild(btn);
+});
+
+/* ════════════════════════════════════════════════════
+   LAYOUT CALCULATION
+════════════════════════════════════════════════════ */
+// Grid fills the full 9:16 shell — no card dimension math needed
+function applyLayout(layout) {
+  const { cols, rows } = layout;
+  const shellW = Math.round(window.innerHeight * 9 / 16);
+  document.getElementById('shell').style.width = shellW + 'px';
+  const r = document.documentElement;
+  r.style.setProperty('--n-cols', cols);
+  r.style.setProperty('--n-rows', rows);
+}
+requestAnimationFrame(() => applyLayout(currentLayout));
+window.addEventListener('resize', () => applyLayout(currentLayout));
+
+/* ════════════════════════════════════════════════════
+   GRID
+════════════════════════════════════════════════════ */
+const TOTAL_SEGS = 14;
+let slots   = [];
+let soloIdx = -1;  // used only by exportReel canvas; UI fullscreen uses fsTracks[]
+const grid = document.getElementById('trackGrid');
+
+function buildGrid(layout) {
+  const { cells, n } = layout;
+  grid.innerHTML = '';
+  slots = [];
+  soloIdx = -1;
+
+  for (let i = 0; i < n; i++) {
+    const cell = cells[i];
+    const card = document.createElement('div');
+    card.className = 'track-card empty';
+    // Explicit CSS grid placement — works for both uniform and asymmetric layouts
+    card.style.gridColumn = `${cell.col + 1} / span ${cell.cSpan}`;
+    card.style.gridRow    = `${cell.row + 1} / span ${cell.rSpan}`;
+    card.appendChild(makeTapHint());
+    makeVuEl(card);
+    grid.appendChild(card);
+    slots.push({
+      card, meter: card.querySelector('.vu-overlay'),
+      gridCell: cell,           // {col,row,cSpan,rSpan} — used by export canvas
+      analyser: null,
+      videoEl:  null,           // <video> element (camera or file)
+      drawEl:   null,           // drawable for canvas export: <video> or <img>
+      isImage:  false,          // true when slot holds a still image
+      isCamera: false, cameraStream: null, micSource: null,
+      videoRec: null, wavRec: null,
+      recordedSamples: null, playbackNode: null,
+      isPending: false, pendingBuffer: null, pendingExt: null,
+    });
+  }
+}
+
+function makeTapHint() {
+  const d = document.createElement('div');
+  d.className = 'tap-hint';
+  d.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke-width="1.5"
+    stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+    <circle cx="12" cy="13" r="4"/></svg><span>tap · drop file</span>`;
+  return d;
+}
+function makeVuEl(card) {
+  const ov = document.createElement('div'); ov.className = 'vu-overlay';
+  for (let i=0; i<TOTAL_SEGS; i++) {
+    const seg = document.createElement('div');
+    seg.className='vu-seg'; seg.dataset.idx=i; ov.appendChild(seg);
+  }
+  card.appendChild(ov); return ov;
+}
+function refreshVu(s) {
+  s.card.querySelector('.vu-overlay')?.remove();
+  s.meter = makeVuEl(s.card);
+}
+
+buildGrid(currentLayout);
+
+/* ════════════════════════════════════════════════════
+   VU LOOP
+════════════════════════════════════════════════════ */
+function segColor(i) { return i<8?'grn':i<11?'yel':'red'; }
+function setLevel(ov, lv) {
+  ov.querySelectorAll('.vu-seg').forEach(seg => {
+    const i=+seg.dataset.idx;
+    seg.className = i<lv ? `vu-seg on ${segColor(i)}` : 'vu-seg';
+  });
+}
+let vuRaf=null;
+const dataArr = new Uint8Array(128);
+function startVuLoop() {
+  const loop = () => {
+    slots.forEach(({meter,analyser}) => {
+      if (!meter) return;
+      if (!analyser) { setLevel(meter,0); return; }
+      analyser.getByteFrequencyData(dataArr);
+      const avg = dataArr.reduce((a,b)=>a+b,0)/dataArr.length;
+      setLevel(meter, Math.min(Math.round((avg/255)*TOTAL_SEGS*2.0), TOTAL_SEGS));
+    });
+    vuRaf = requestAnimationFrame(loop);
+  };
+  if (vuRaf) cancelAnimationFrame(vuRaf);
+  loop();
+}
+
+/* ════════════════════════════════════════════════════
+   AUDIO CONTEXT + WORKLET
+════════════════════════════════════════════════════ */
+let audioCtx=null, masterGain=null;
+async function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx   = new AudioContext({ sampleRate:48000, latencyHint:'interactive' });
+    masterGain = audioCtx.createGain();
+    masterGain.connect(audioCtx.destination);
+    const blob = new Blob([WORKLET_SRC], {type:'application/javascript'});
+    const url  = URL.createObjectURL(blob);
+    await audioCtx.audioWorklet.addModule(url);
+    URL.revokeObjectURL(url);
+  }
+  if (audioCtx.state==='suspended') await audioCtx.resume();
+  return audioCtx;
+}
+
+/* ════════════════════════════════════════════════════
+   DEVICE SELECTION
+════════════════════════════════════════════════════ */
+let selectedVideoDeviceId = null;
+let selectedAudioDeviceId = null;
+
+async function populateDevices() {
+  // Brief getUserMedia so macOS releases device labels
+  try {
+    const tmp = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+    tmp.getTracks().forEach(t => t.stop());
+  } catch(e) { /* ok if some fail */ }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const vDevs   = devices.filter(d => d.kind==='videoinput');
+  const aDevs   = devices.filter(d => d.kind==='audioinput');
+
+  const camSel   = document.getElementById('cameraSelect');
+  const audSel   = document.getElementById('audioSelect');
+  const camHint  = document.getElementById('cameraHint');
+  const audHint  = document.getElementById('audioHint');
+
+  camSel.innerHTML = '';
+  vDevs.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `Camera ${camSel.length + 1}`;
+    camSel.appendChild(o);
+  });
+  if (!vDevs.length) {
+    const o = document.createElement('option');
+    o.textContent = 'No cameras found'; camSel.appendChild(o);
+  }
+  camHint.textContent = `${vDevs.length} device${vDevs.length!==1?'s':''} found`;
+
+  audSel.innerHTML = '';
+  aDevs.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.deviceId;
+    o.textContent = d.label || `Microphone ${audSel.length + 1}`;
+    audSel.appendChild(o);
+  });
+  if (!aDevs.length) {
+    const o = document.createElement('option');
+    o.textContent = 'No audio inputs found'; audSel.appendChild(o);
+  }
+  audHint.textContent = `${aDevs.length} device${aDevs.length!==1?'s':''} found`;
+
+  // Auto-select first non-default audio for professional interfaces
+  const focusrite = aDevs.find(d => /focusrite|scarlett|saffire/i.test(d.label));
+  const blackmagic = vDevs.find(d => /blackmagic|atem|decklink/i.test(d.label));
+  if (focusrite) audSel.value = focusrite.deviceId;
+  if (blackmagic) camSel.value = blackmagic.deviceId;
+}
+
+/* ── Step 1 → Step 2 ── */
+let saveDir = null;
+document.getElementById('btnSelectFolder').addEventListener('click', async () => {
+  let result;
+  try { result = await window.api.chooseDir(); }
+  catch(e) { showToast('⚠ Could not open folder', true); return; }
+  if (!result) return;
+  saveDir = result.dir;
+  const folderShortName = result.dir.split('/').pop() || result.dir;
+  document.getElementById('folderName').textContent = folderShortName;
+  document.getElementById('mxFileName').textContent = folderShortName;
+
+  // Pre-populate devices while transitioning
+  populateDevices();
+
+  document.getElementById('landing').classList.add('hidden');
+  document.getElementById('deviceStep').classList.remove('hidden');
+
+  // Cache result for after device confirmation
+  document.getElementById('btnDevStart')._pending = result;
+});
+
+/* ── Device step: back ── */
+document.getElementById('btnDevBack').addEventListener('click', () => {
+  document.getElementById('deviceStep').classList.add('hidden');
+  document.getElementById('landing').classList.remove('hidden');
+});
+
+/* ── Device step: start → App ── */
+document.getElementById('btnDevStart').addEventListener('click', async () => {
+  const camSel = document.getElementById('cameraSelect');
+  const audSel = document.getElementById('audioSelect');
+  selectedVideoDeviceId = camSel.value || null;
+  selectedAudioDeviceId = audSel.value || null;
+
+  const result = document.getElementById('btnDevStart')._pending;
+
+  buildGrid(currentLayout);
+  applyLayout(currentLayout);
+  mxTrackCount = currentLayout.n;
+  buildMixerStrips(mxTrackCount);
+  buildMxLayoutBar();
+
+  document.getElementById('deviceStep').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  startVuLoop();
+
+  if (result?.tracks?.length) loadTrackPairs(result.tracks);
+});
+
+/* ════════════════════════════════════════════════════
+   LOAD SAVED TRACKS (project reopen)
+════════════════════════════════════════════════════ */
+async function loadTrackPairs(pairs) {
+  const ctx = await getAudioCtx();
+  let loaded = 0;
+
+  for (const p of pairs) {
+    // Prefer trackIdx-based placement; fall back to first empty slot
+    let idx = (p.trackIdx != null) ? p.trackIdx - 1 : -1;
+    if (idx < 0 || idx >= slots.length || slots[idx].drawEl || slots[idx].isCamera) {
+      idx = slots.findIndex(s => !s.drawEl && !s.isCamera);
+    }
+    if (idx === -1) break;
+
+    // Image track — load directly, no audio
+    if (p.imagePath) {
+      await loadImageIntoSlot(idx, p.imagePath);
+      loaded++;
+      continue;
+    }
+
+    // Video track — convert if needed, then populate slot
+    const result = await window.api.convertIfNeeded(p.videoPath);
+    if (result.converted) showToast(`Converted: ${p.videoPath.split('/').pop()}`);
+    const videoPath = result.path;
+    const { audioPath } = p;
+
+    const s = slots[idx];
+    s.card.innerHTML=''; s.card.classList.remove('empty','camera-active');
+
+    const vid = document.createElement('video');
+    vid.src='file://'+encodeURI(videoPath); vid.loop=false;
+    vid.playsInline=true; vid.muted=true; vid.preload='auto';
+    vid.onended = () => { vid.currentTime=0; };
+    s.card.appendChild(vid); s.videoEl=vid; s.drawEl=vid;
+    addTrackBadge(s.card, idx+1);
+    refreshVu(s);
+
+    const analyser=ctx.createAnalyser(); analyser.fftSize=256;
+    analyser.connect(masterGain); s.analyser=analyser;
+
+    if (audioPath) {
+      const ab = await window.api.readFile(audioPath);
+      if (ab) {
+        try {
+          const buf = await ctx.decodeAudioData(ab);
+          s.recordedSamples = new Float32Array(buf.getChannelData(0));
+          takeCount++;
+          if (!loopDuration) { loopDuration=Math.round(buf.duration*1000); }
+        } catch(e) { console.error('WAV decode:',e); }
+      }
+    } else {
+      vid.muted=false;
+      ctx.createMediaElementSource(vid).connect(analyser);
+    }
+    loaded++;
+  }
+  if (loaded) showToast(`${loaded} track${loaded>1?'s':''} loaded`);
+  refreshExportBtn();
+}
+
+/* ════════════════════════════════════════════════════
+   CAMERA
+════════════════════════════════════════════════════ */
+let activeCameraIdx = -1;
+
+grid.addEventListener('click', e => {
+  if (isRecording) return;
+  const card = e.target.closest('.track-card');
+  if (!card) return;
+  const idx = slots.findIndex(s => s.card===card);
+  if (idx===-1) return;
+  const s = slots[idx];
+  if (s.isPending) return;               // overlay buttons handle pending slots
+  if (s.isCamera)              deactivateCamera(idx);
+  else if (s.recordedSamples)  clearTakeAndActivateCamera(idx);
+  else if (!s.drawEl)          activateCamera(idx);
+});
+
+async function clearTakeAndActivateCamera(idx) {
+  stopPlayback();
+  const s = slots[idx];
+  if (s.playbackNode) { try{s.playbackNode.stop();}catch(_){} s.playbackNode=null; }
+  if (s.analyser)     { s.analyser.disconnect(); s.analyser=null; }
+  if (s.videoEl)      { s.videoEl.pause(); s.videoEl=null; }
+  s.drawEl=null; s.isImage=false;
+  s.recordedSamples=null; takeCount=Math.max(0,takeCount-1);
+  s.card.innerHTML='';
+  s.card.classList.remove('camera-active','recording-active');
+  s.card.classList.add('empty');
+  s.card.appendChild(makeTapHint()); refreshVu(s);
+  refreshExportBtn();
+  await activateCamera(idx);
+}
+
+/* ════════════════════════════════════════════════════
+   IMAGE SLOTS
+════════════════════════════════════════════════════ */
+async function loadImageIntoSlot(idx, imagePath) {
+  const s = slots[idx];
+  s.card.innerHTML = ''; s.card.classList.remove('empty', 'camera-active', 'drag-target');
+  const img = document.createElement('img');
+  img.src = 'file://' + encodeURI(imagePath);
+  img.draggable = false;
+  s.card.appendChild(img);
+  s.drawEl = img; s.isImage = true;
+  addTrackBadge(s.card, idx + 1);
+  refreshVu(s);
+  refreshExportBtn();
+}
+
+/* ════════════════════════════════════════════════════
+   DRAG-AND-DROP INTO TRACK CARDS
+════════════════════════════════════════════════════ */
+const VIDEO_DROP_EXTS = new Set(['mp4','mov','webm','mkv','m4v','avi','ogv','flv','wmv','ts','mts']);
+const IMAGE_DROP_EXTS = new Set(['jpg','jpeg','png','gif','webp','bmp']);
+
+// Clear all content from a slot without activating camera (used before drop)
+function _clearSlotContent(idx) {
+  savedSlots[idx] = null; // clear persistent store too
+  const s = slots[idx];
+  // Adjust takeCount only for confirmed (non-pending) recorded samples
+  if (s.recordedSamples && !s.isPending) takeCount = Math.max(0, takeCount - 1);
+  stopPlayback();
+  if (s.playbackNode) { try{s.playbackNode.stop();}catch(_){} s.playbackNode=null; }
+  if (s.cameraStream) { s.cameraStream.getTracks().forEach(t=>t.stop()); s.cameraStream=null; }
+  if (s.micSource)    { s.micSource.disconnect(); s.micSource=null; }
+  if (s.analyser)     { s.analyser.disconnect(); s.analyser=null; }
+  if (s.videoEl)      { s.videoEl.pause(); s.videoEl=null; }
+  if (activeCameraIdx === idx) activeCameraIdx = -1;
+  s.isCamera=false; s.drawEl=null; s.isImage=false;
+  s.recordedSamples=null; s.isPending=false; s.pendingBuffer=null; s.pendingExt=null;
+  s.card.innerHTML='';
+  s.card.classList.remove('empty','camera-active','recording-active','pending','drag-target');
+}
+
+grid.addEventListener('dragover', e => {
+  const card = e.target.closest('.track-card');
+  if (!card) return;
+  const item = e.dataTransfer?.items?.[0];
+  if (!item || item.kind !== 'file') return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  card.classList.add('drag-target');
+});
+
+grid.addEventListener('dragleave', e => {
+  const card = e.target.closest('.track-card');
+  if (!card) return;
+  // Only remove highlight when leaving the card itself, not a child element
+  if (!card.contains(e.relatedTarget)) card.classList.remove('drag-target');
+});
+
+grid.addEventListener('drop', async e => {
+  const card = e.target.closest('.track-card');
+  if (!card) return;
+  e.preventDefault();
+  card.classList.remove('drag-target');
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  const ext = file.name.split('.').pop().toLowerCase();
+  const idx = slots.findIndex(s => s.card === card);
+  if (idx === -1) return;
+  if (isRecording) { showToast('⚠ Stop recording first', true); return; }
+  if (VIDEO_DROP_EXTS.has(ext))      await dropVideoIntoSlot(idx, file);
+  else if (IMAGE_DROP_EXTS.has(ext)) await dropImageIntoSlot(idx, file);
+  else showToast('⚠ Unsupported file type', true);
+});
+
+async function dropVideoIntoSlot(idx, file) {
+  if (!saveDir) { showToast('⚠ Choose a project folder first', true); return; }
+  const ext = file.name.split('.').pop().toLowerCase();
+  const destName = `track_${idx+1}_video.${ext}`;
+  const destPath = await window.api.pathJoin(saveDir, destName);
+
+  showToast(`Saving ${file.name}…`);
+  const ab = await file.arrayBuffer();
+  const saved = await window.api.saveFile(destPath, ab);
+  if (!saved.ok) { showToast('⚠ Could not save file', true); return; }
+
+  const { path: playPath, converted } = await window.api.convertIfNeeded(destPath);
+  if (converted) showToast(`Converted: ${destName}`);
+
+  _clearSlotContent(idx);
+  const s = slots[idx];
+
+  const vid = document.createElement('video');
+  vid.src = 'file://' + encodeURI(playPath);
+  vid.loop=false; vid.playsInline=true; vid.muted=false; vid.preload='auto';
+  vid.onended = () => { vid.currentTime=0; };
+  s.card.appendChild(vid);
+  s.videoEl=vid; s.drawEl=vid; s.isImage=false;
+
+  const ctx = await getAudioCtx();
+  const analyser = ctx.createAnalyser(); analyser.fftSize=256;
+  ctx.createMediaElementSource(vid).connect(analyser);
+  analyser.connect(masterGain);
+  s.analyser=analyser;
+
+  addTrackBadge(s.card, idx+1);
+  refreshVu(s);
+  refreshExportBtn();
+  showToast(`✓ Video added to track ${idx+1}`);
+}
+
+async function dropImageIntoSlot(idx, file) {
+  if (!saveDir) { showToast('⚠ Choose a project folder first', true); return; }
+  const ext = file.name.split('.').pop().toLowerCase();
+  const destName = `track_${idx+1}_image.${ext}`;
+  const destPath = await window.api.pathJoin(saveDir, destName);
+
+  const ab = await file.arrayBuffer();
+  const saved = await window.api.saveFile(destPath, ab);
+  if (!saved.ok) { showToast('⚠ Could not save image', true); return; }
+
+  _clearSlotContent(idx);
+  await loadImageIntoSlot(idx, destPath);
+  showToast(`✓ Image added to track ${idx+1}`);
+}
+
+async function activateCamera(idx) {
+  if (activeCameraIdx>=0) deactivateCamera(activeCameraIdx);
+  const s=slots[idx], ctx=await getAudioCtx();
+  try {
+    // Use selected devices; fall back to defaults
+    const videoConstraints = selectedVideoDeviceId
+      ? { deviceId:{ exact:selectedVideoDeviceId } }
+      : { facingMode:'user', width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30} };
+    const audioConstraints = selectedAudioDeviceId
+      ? { deviceId:{ exact:selectedAudioDeviceId },
+          echoCancellation:false, noiseSuppression:false, autoGainControl:false,
+          sampleRate:48000, channelCount:1, latency:0 }
+      : { echoCancellation:false, noiseSuppression:false, autoGainControl:false,
+          sampleRate:48000, channelCount:1, latency:0 };
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: videoConstraints, audio: audioConstraints,
+    });
+    s.card.innerHTML=''; s.card.classList.remove('empty'); s.card.classList.add('camera-active');
+    const vid=document.createElement('video');
+    vid.srcObject=stream; vid.autoplay=true; vid.muted=true;
+    vid.playsInline=true; vid.className='selfie';
+    s.card.appendChild(vid); refreshVu(s);
+
+    const micSrc=ctx.createMediaStreamSource(stream);
+    const analyser=ctx.createAnalyser(); analyser.fftSize=256;
+    micSrc.connect(analyser); analyser.connect(masterGain);
+
+    s.videoEl=vid; // store camera video so FS canvas can draw it
+    s.cameraStream=stream; s.micSource=micSrc;
+    s.analyser=analyser; s.isCamera=true; activeCameraIdx=idx;
+  } catch(err) {
+    console.error('Camera:',err); showToast('⚠ Camera/mic denied',true);
+    s.card.classList.add('empty'); s.card.appendChild(makeTapHint()); refreshVu(s);
+  }
+}
+
+function deactivateCamera(idx) {
+  const s=slots[idx]; if (!s.isCamera) return;
+  s.cameraStream?.getTracks().forEach(t=>t.stop());
+  s.micSource?.disconnect();
+  Object.assign(s,{cameraStream:null,micSource:null,analyser:null,isCamera:false});
+  activeCameraIdx=-1;
+  s.card.innerHTML=''; s.card.classList.remove('camera-active');
+  s.card.classList.add('empty'); s.card.appendChild(makeTapHint()); refreshVu(s);
+}
+
+/* ════════════════════════════════════════════════════
+   RECORDING ENGINE
+════════════════════════════════════════════════════ */
+/* ════════════════════════════════════════════════════
+   FULLSCREEN CANVAS OVERLAY
+════════════════════════════════════════════════════ */
+let fsActive = false;
+let fsTracks = [];  // ordered list of track indices shown in FS
+let fsRaf    = null;
+
+// Pixel dimensions of the canvas (set once, matches shell size)
+function _fsCvs() { return document.getElementById('fs-canvas'); }
+
+function _resizeFsCanvas() {
+  const cvs = _fsCvs(); if (!cvs) return;
+  const shell = document.getElementById('shell');
+  cvs.width  = shell.offsetWidth  || 390;
+  cvs.height = shell.offsetHeight || 844;
+}
+
+// Draw one frame of the FS composition
+function _drawFsFrame() {
+  if (!fsActive) return;
+  const cvs = _fsCvs(); if (!cvs) return;
+  const W = cvs.width, H = cvs.height;
+  const ctx2 = cvs.getContext('2d');
+  ctx2.fillStyle = '#000'; ctx2.fillRect(0, 0, W, H);
+
+  const n = fsTracks.length;
+  if (n === 0) { fsRaf = requestAnimationFrame(_drawFsFrame); return; }
+
+  // Cell geometry: 1-up / 2-up side-by-side / T (2 top + 1 wide bottom)
+  const cells = n === 1
+    ? [{ x:0,   y:0,   w:W,   h:H   }]
+    : n === 2
+    ? [{ x:0,   y:0,   w:W/2, h:H   }, { x:W/2, y:0,   w:W/2, h:H   }]
+    : /* 3 — T layout */
+      [{ x:0,   y:0,   w:W/2, h:H/2 }, { x:W/2, y:0,   w:W/2, h:H/2 },
+       { x:0,   y:H/2, w:W,   h:H/2 }];
+
+  fsTracks.forEach((ti, ci) => {
+    const s = slots[ti]; if (!s) return;
+    const el = s.videoEl || s.drawEl;
+    if (!el) return;
+    // Readiness check
+    if (el.tagName === 'VIDEO' && !(el.videoWidth > 0)) return;
+    if (el.tagName === 'IMG'   && !(el.complete && el.naturalWidth > 0)) return;
+    const { x, y, w, h } = cells[ci];
+    const ew = el.videoWidth || el.naturalWidth  || w;
+    const eh = el.videoHeight|| el.naturalHeight || h;
+    const scale = Math.max(w / ew, h / eh);
+    const sw = ew * scale, sh = eh * scale;
+    ctx2.save();
+    ctx2.beginPath(); ctx2.rect(x, y, w, h); ctx2.clip();
+    ctx2.drawImage(el, x + (w - sw)/2, y + (h - sh)/2, sw, sh);
+    ctx2.restore();
+    // subtle track badge
+    ctx2.font = '700 9px SF Mono, monospace';
+    ctx2.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx2.fillRect(x + 6, y + 6, 18, 14);
+    ctx2.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx2.fillText(ti + 1, x + 9, y + 17);
+  });
+
+  fsRaf = requestAnimationFrame(_drawFsFrame);
+}
+
+function _openFsOverlay() {
+  _resizeFsCanvas();
+  document.getElementById('fs-overlay').style.display = 'block';
+  fsActive = true;
+  if (fsRaf) cancelAnimationFrame(fsRaf);
+  _drawFsFrame();
+  _syncFsButtons();
+}
+
+function _closeFsOverlay() {
+  fsActive = false;
+  if (fsRaf) { cancelAnimationFrame(fsRaf); fsRaf = null; }
+  document.getElementById('fs-overlay').style.display = 'none';
+  fsTracks = [];
+  _syncFsButtons();
+}
+
+function _syncFsButtons() {
+  document.querySelectorAll('.mx-solo-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', fsActive && fsTracks.includes(i));
+  });
+  document.querySelectorAll('.mx-add-btn').forEach((btn, i) => {
+    btn.classList.toggle('active', fsActive && fsTracks.includes(i));
+  });
+}
+
+// Eye button: go FS with ONLY this track (or exit if already soloing this track alone)
+function setSolo(idx) {
+  if (fsActive && fsTracks.length === 1 && fsTracks[0] === idx) {
+    _closeFsOverlay();
+  } else {
+    fsTracks = [idx];
+    _openFsOverlay();
+  }
+}
+
+// + button: ADD this track to the FS composition (or remove if already there)
+function fsAddTrack(idx) {
+  if (!fsActive) {
+    fsTracks = [idx]; _openFsOverlay(); return;
+  }
+  if (fsTracks.includes(idx)) {
+    fsTracks = fsTracks.filter(i => i !== idx);
+    if (fsTracks.length === 0) { _closeFsOverlay(); return; }
+  } else if (fsTracks.length < 3) {
+    fsTracks.push(idx);
+  }
+  _syncFsButtons();
+}
+
+// Tap overlay to exit
+document.getElementById('fs-overlay').addEventListener('click', _closeFsOverlay);
+
+/* ════════════════════════════════════════════════════
+   PERSISTENT SLOT STORE — survives layout switches
+════════════════════════════════════════════════════ */
+// Indexed by slot position 0-11; null = empty
+const savedSlots = Array(12).fill(null);
+
+function _snapSlot(s) {
+  return {
+    videoEl: s.videoEl, drawEl: s.drawEl, isImage: s.isImage,
+    isCamera: s.isCamera, cameraStream: s.cameraStream,
+    micSource: s.micSource, analyser: s.analyser,
+    recordedSamples: s.recordedSamples,
+    pendingBuffer: s.pendingBuffer, pendingExt: s.pendingExt,
+    isPending: s.isPending, playbackNode: s.playbackNode,
+  };
+}
+
+// Flush current slots[] into savedSlots (only for positions in current layout)
+function flushToSaved() {
+  slots.forEach((s, i) => {
+    savedSlots[i] = (s.videoEl || s.drawEl || s.isCamera) ? _snapSlot(s) : null;
+  });
+}
+
+// Restore a saved snapshot into a newly-built slot card
+function _restoreSnap(snap, s, i) {
+  if (!snap) return;
+  if (!snap.videoEl && !snap.drawEl && !snap.isCamera) return;
+  s.card.innerHTML = ''; s.card.classList.remove('empty');
+
+  if (snap.isCamera && snap.cameraStream) {
+    s.card.classList.add('camera-active');
+    const vid = document.createElement('video');
+    vid.srcObject = snap.cameraStream; vid.autoplay = true;
+    vid.muted = true; vid.playsInline = true; vid.className = 'selfie';
+    s.card.appendChild(vid);
+    s.videoEl = vid;
+    s.cameraStream = snap.cameraStream; s.micSource = snap.micSource;
+    s.analyser = snap.analyser; s.isCamera = true;
+  } else if (snap.isImage && snap.drawEl) {
+    s.card.appendChild(snap.drawEl);
+    s.drawEl = snap.drawEl; s.isImage = true; s.analyser = snap.analyser;
+    addTrackBadge(s.card, i + 1);
+  } else if (snap.videoEl) {
+    if (snap.isPending) s.card.classList.add('pending');
+    s.card.appendChild(snap.videoEl);
+    s.videoEl = snap.videoEl; s.drawEl = snap.drawEl;
+    s.analyser = snap.analyser; s.recordedSamples = snap.recordedSamples;
+    s.pendingBuffer = snap.pendingBuffer; s.pendingExt = snap.pendingExt;
+    s.isPending = snap.isPending; s.playbackNode = snap.playbackNode;
+    addTrackBadge(s.card, i + 1);
+    if (snap.isPending) {
+      const ov = document.createElement('div'); ov.className = 'pending-overlay';
+      ov.innerHTML = `<button class="pend-btn pend-redo">↺ Redo</button>
+                      <button class="pend-btn pend-keep">✓ Keep</button>`;
+      s.card.appendChild(ov);
+      ov.querySelector('.pend-keep').addEventListener('click', e => { e.stopPropagation(); confirmTake(i); });
+      ov.querySelector('.pend-redo').addEventListener('click', e => { e.stopPropagation(); discardTake(i); });
+    }
+  }
+  refreshVu(s);
+}
+
+/* ════════════════════════════════════════════════════
+   LIVE LAYOUT SWITCH — preserves ALL slot content
+════════════════════════════════════════════════════ */
+function switchLayout(newLayout) {
+  if (newLayout === currentLayout && slots.length === newLayout.n) return;
+
+  // 1. Flush visible slots into persistent store
+  flushToSaved();
+
+  // 2. Rebuild grid skeleton (wipes DOM, resets slots[])
+  currentLayout = newLayout;
+  buildGrid(newLayout);
+
+  // 3. Restore from savedSlots for every new slot position
+  //    This recovers slots 3-5 when returning from T(3) back to 6-grid
+  slots.forEach((s, i) => _restoreSnap(savedSlots[i], s, i));
+
+  // Clamp transient state
+  if (activeCameraIdx >= slots.length) activeCameraIdx = -1;
+  fsTracks = fsTracks.filter(i => i < slots.length);
+  refreshExportBtn();
+}
+
+let isRecording=false, isPlaying=false;
+let recStartTime=0, playStartTime=0;
+let sessionTs='';
+let loopDuration=0;
+let loopTimer=null, playTimer=null;
+let takeCount=0;
+
+function nowTs() {
+  const d    = new Date();
+  const date = d.toLocaleDateString('en-CA');                          // 2026-05-23
+  const time = d.toTimeString().slice(0,8).replace(/:/g,'-');          // 14-30-45
+  return `${date}_${time}`;
+}
+function fmtMs(ms) {
+  const cs = Math.floor((ms % 1000) / 10);   // centiseconds (0-99)
+  const s  = Math.floor(ms / 1000);
+  const m  = Math.floor(s / 60);
+  return `${m>0?m+':':'0:'}${String(s%60).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+}
+
+/* ── Persistent timer tick — 40ms for smooth centisecond updates ── */
+const timerDisplay = document.getElementById('timerDisplay');
+setInterval(() => {
+  let elapsed = 0;
+  if (isRecording)    elapsed = Date.now() - recStartTime;
+  else if (isPlaying) elapsed = Date.now() - playStartTime;
+  const cur   = fmtMs(elapsed);
+  const total = loopDuration > 0 ? fmtMs(loopDuration) : '—';
+  timerDisplay.textContent = `${cur} / ${total}`;
+  timerDisplay.classList.toggle('active', isRecording || isPlaying);
+}, 40);
+
+function startVideoRec(stream) {
+  const vt=stream.getVideoTracks()[0]; if (!vt) return null;
+  const chunks=[];
+  const mime=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
+              .find(t=>MediaRecorder.isTypeSupported(t))||'';
+  const ext=mime.includes('mp4')?'mp4':'webm';
+  const mr=new MediaRecorder(new MediaStream([vt]),mime?{mimeType:mime}:{});
+  mr.ondataavailable=e=>{if(e.data?.size>0)chunks.push(e.data);};
+  mr.start(200);
+  return {
+    stop: ()=>new Promise(resolve=>{
+      mr.onstop=async()=>{
+        const blob=new Blob(chunks,{type:mime||'video/webm'});
+        resolve({buffer:await blob.arrayBuffer(),ext,blobUrl:URL.createObjectURL(blob)});
+      };
+      mr.stop();
+    }),
+  };
+}
+
+function startWavRec(ctx, stream) {
+  const at=stream.getAudioTracks()[0]; if (!at) return null;
+  const src=ctx.createMediaStreamSource(new MediaStream([at]));
+  const node=new AudioWorkletNode(ctx,'wav-recorder');
+  src.connect(node); node.port.postMessage('start');
+  let _res;
+  node.port.onmessage=({data})=>{if(data.type==='done'&&_res){_res(data.samples);_res=null;}};
+  return {
+    node,
+    stop:()=>new Promise(resolve=>{_res=resolve; node.port.postMessage('stop');}),
+  };
+}
+
+/* ════════════════════════════════════════════════════
+   PENDING TAKE — review before saving
+════════════════════════════════════════════════════ */
+function addTrackBadge(card, num) {
+  card.querySelector('.track-badge')?.remove();
+  const b = document.createElement('div');
+  b.className = 'track-badge'; b.textContent = num;
+  card.appendChild(b);
+}
+
+async function showPendingTake(idx, blobUrl, buffer, ext, samples) {
+  const ctx = await getAudioCtx();
+  const s = slots[idx];
+  // Stop camera stream that was still running during recording
+  if (s.cameraStream) { s.cameraStream.getTracks().forEach(t=>t.stop()); s.cameraStream=null; }
+  if (s.micSource)    { s.micSource.disconnect(); s.micSource=null; }
+  if (s.analyser)     { s.analyser.disconnect(); s.analyser=null; }
+  if (activeCameraIdx===idx) activeCameraIdx=-1;
+  s.isCamera=false;
+
+  s.card.innerHTML='';
+  s.card.classList.remove('empty','camera-active','recording-active');
+  s.card.classList.add('pending');
+
+  const vid=document.createElement('video');
+  vid.src=blobUrl; vid.loop=false;
+  vid.playsInline=true; vid.muted=true; vid.preload='auto';
+  vid.onended=()=>{vid.currentTime=0;};
+  s.card.appendChild(vid); s.videoEl=vid; s.drawEl=vid; refreshVu(s);
+
+  const analyser=ctx.createAnalyser(); analyser.fftSize=256;
+  analyser.connect(masterGain);
+  s.analyser=analyser; s.recordedSamples=samples;
+  s.pendingBuffer=buffer; s.pendingExt=ext; s.isPending=true;
+
+  addTrackBadge(s.card, idx+1);
+
+  const ov=document.createElement('div'); ov.className='pending-overlay';
+  ov.innerHTML=`<button class="pend-btn pend-redo">↺ Redo</button>
+                <button class="pend-btn pend-keep">✓ Keep</button>`;
+  s.card.appendChild(ov);
+  ov.querySelector('.pend-keep').addEventListener('click', e=>{e.stopPropagation(); confirmTake(idx);});
+  ov.querySelector('.pend-redo').addEventListener('click', e=>{e.stopPropagation(); discardTake(idx);});
+  refreshExportBtn();
+}
+
+async function confirmTake(idx) {
+  const s=slots[idx]; if(!s.isPending) return;
+  s.card.querySelector('.pending-overlay')?.remove();
+  s.card.classList.remove('pending');
+  s.isPending=false; takeCount++;
+
+  const fname=`track_${idx+1}`;
+  const saves=[];
+  if (s.pendingBuffer && s.pendingExt) {
+    const fp=await window.api.pathJoin(saveDir,`${fname}_video.${s.pendingExt}`);
+    saves.push(window.api.saveFile(fp,s.pendingBuffer).then(r=>r.ok?fp:null));
+  }
+  if (s.recordedSamples) {
+    const fp=await window.api.pathJoin(saveDir,`${fname}_audio.wav`);
+    saves.push(window.api.saveFile(fp,encodeWAV(s.recordedSamples,audioCtx.sampleRate)).then(r=>r.ok?fp:null));
+  }
+  s.pendingBuffer=null; s.pendingExt=null;
+  try {
+    const ok=(await Promise.all(saves)).filter(Boolean).length;
+    showToast(ok?`✓ Track ${idx+1} saved`:'⚠ Save failed',!ok);
+  } catch(e){ console.error(e); showToast('⚠ Save error',true); }
+  refreshExportBtn();
+}
+
+async function discardTake(idx) {
+  const s=slots[idx]; if(!s.isPending) return;
+  if(s.playbackNode){try{s.playbackNode.stop();}catch(_){}s.playbackNode=null;}
+  if(s.analyser){s.analyser.disconnect();s.analyser=null;}
+  if(s.videoEl){s.videoEl.pause();s.videoEl=null;}
+  s.recordedSamples=null; s.pendingBuffer=null; s.pendingExt=null; s.isPending=false;
+  s.card.innerHTML='';
+  s.card.classList.remove('pending','camera-active','recording-active');
+  s.card.classList.add('empty');
+  s.card.appendChild(makeTapHint()); refreshVu(s);
+  refreshExportBtn();
+  await activateCamera(idx);
+}
+
+/* ════════════════════════════════════════════════════
+   PLAYBACK  — one-shot, auto-stops at loopDuration
+════════════════════════════════════════════════════ */
+async function startPlayback() {
+  const ctx=await getAudioCtx();
+  // Always play videos silently for the visual
+  slots.forEach(s=>{
+    if (s.videoEl&&!s.isCamera) { s.videoEl.currentTime=0; s.videoEl.play().catch(()=>{}); }
+  });
+  if (mixdownBuffer) {
+    // Mixdown overrides all track audio
+    if(mixdownNode){try{mixdownNode.stop();}catch(_){}mixdownNode=null;}
+    const node=ctx.createBufferSource();
+    node.buffer=mixdownBuffer; node.loop=false;
+    node.connect(masterGain); node.start(0);
+    mixdownNode=node;
+  } else {
+    slots.forEach(s=>{
+      if (s.recordedSamples&&s.analyser) {
+        if(s.playbackNode){try{s.playbackNode.stop();}catch(_){}s.playbackNode=null;}
+        const buf=ctx.createBuffer(1,s.recordedSamples.length,ctx.sampleRate);
+        buf.getChannelData(0).set(s.recordedSamples);
+        const node=ctx.createBufferSource();
+        node.buffer=buf; node.loop=false;
+        node.connect(s.analyser); node.start(0);
+        s.playbackNode=node;
+      }
+    });
+  }
+  playStartTime=Date.now(); isPlaying=true;
+  document.getElementById('btnPlay').classList.add('playing');
+  const dur = mixdownBuffer ? Math.round(mixdownBuffer.duration*1000) : loopDuration;
+  if (dur>0) {
+    if(playTimer)clearTimeout(playTimer);
+    playTimer=setTimeout(()=>stopPlayback(), dur);
+  }
+}
+
+function stopPlayback() {
+  if(playTimer){clearTimeout(playTimer);playTimer=null;}
+  slots.forEach(s=>{
+    if(s.videoEl&&!s.isCamera){s.videoEl.pause();s.videoEl.currentTime=0;}
+    if(s.playbackNode){try{s.playbackNode.stop();}catch(_){}s.playbackNode=null;}
+  });
+  if(mixdownNode){try{mixdownNode.stop();}catch(_){}mixdownNode=null;}
+  isPlaying=false;
+  document.getElementById('btnPlay').classList.remove('playing');
+}
+
+/* ════════════════════════════════════════════════════
+   RECORD
+════════════════════════════════════════════════════ */
+async function startRecording() {
+  if (!saveDir) { showToast('⚠ Choose a save folder first',true); return false; }
+  if (slots.some(s => s.isPending)) { showToast('⚠ Keep or redo pending takes first',true); return false; }
+  const ctx=await getAudioCtx();
+  sessionTs=nowTs();
+  await startPlayback();
+
+  let camCount=0;
+  for (let i=0;i<slots.length;i++) {
+    const s=slots[i];
+    if(!s.isCamera||!s.cameraStream) continue;
+    camCount++;
+    s.videoRec=startVideoRec(s.cameraStream);
+    s.wavRec=startWavRec(ctx,s.cameraStream);
+    s.card.classList.remove('camera-active'); s.card.classList.add('recording-active');
+  }
+  if (camCount===0) {
+    stopPlayback(); showToast('⚠ Tap a slot to add your camera',true); return false;
+  }
+  recStartTime=Date.now();
+  if (loopDuration>0) {
+    if(loopTimer)clearTimeout(loopTimer);
+    loopTimer=setTimeout(async()=>{
+      if(!isRecording)return;
+      isRecording=false;
+      document.getElementById('btnRecord').classList.remove('recording');
+      await stopRecording();
+    }, loopDuration);
+  }
+  return true;
+}
+
+async function stopRecording() {
+  if(loopTimer){clearTimeout(loopTimer);loopTimer=null;}
+  if (!loopDuration) loopDuration=Date.now()-recStartTime;
+  stopPlayback();
+
+  const jobs=[];
+  for (let i=0;i<slots.length;i++) {
+    const s=slots[i];
+    if(!s.isCamera||(!s.videoRec&&!s.wavRec)) continue;
+    const slotIdx=i;
+    const vr=s.videoRec; s.videoRec=null;
+    const wr=s.wavRec;   s.wavRec=null;
+    jobs.push(
+      Promise.all([vr?vr.stop():Promise.resolve(null), wr?wr.stop():Promise.resolve(null)])
+      .then(async([vRes,samples])=>{
+        if(wr) wr.node?.disconnect();
+        if(vRes && samples)
+          await showPendingTake(slotIdx, vRes.blobUrl, vRes.buffer, vRes.ext, samples);
+      })
+    );
+  }
+  try {
+    await Promise.all(jobs);
+    const n=slots.filter(s=>s.isPending).length;
+    if(n) showToast(`Review take${n>1?'s':''} — tap ✓ to keep`);
+  } catch(e){ console.error(e); showToast('⚠ Error processing take',true); }
+}
+
+/* ════════════════════════════════════════════════════
+   TRANSPORT BUTTONS
+════════════════════════════════════════════════════ */
+document.getElementById('btnRecord').addEventListener('click', async()=>{
+  if (isRecording) {
+    isRecording=false;
+    document.getElementById('btnRecord').classList.remove('recording');
+    await stopRecording();
+  } else {
+    const ok=await startRecording();
+    isRecording=ok;
+    document.getElementById('btnRecord').classList.toggle('recording',ok);
+  }
+});
+document.getElementById('btnPlay').addEventListener('click', async()=>{
+  if(isPlaying) stopPlayback();
+  else await startPlayback();
+});
+
+/* ════════════════════════════════════════════════════
+   EXPORT REEL  (live window capture + audio)
+════════════════════════════════════════════════════ */
+let isExporting = false;
+const btnExport = document.getElementById('btnExport');
+
+function refreshExportBtn() {
+  const hasTracks = slots.some(s => s.recordedSamples || (s.drawEl && !s.isCamera));
+  const dis = !hasTracks || isExporting;
+  btnExport.disabled = dis;
+  const mxBtn = document.getElementById('mxBtnExport');
+  if (mxBtn) mxBtn.style.opacity = dis ? '0.28' : '1';
+}
+
+async function exportReel() {
+  if (isExporting) return;
+  if (!slots.some(s => s.drawEl && !s.isCamera)) {
+    showToast('⚠ No tracks to export', true); return;
+  }
+  if (!saveDir) { showToast('⚠ Choose a save folder first', true); return; }
+  if (isRecording || isPlaying) { showToast('⚠ Stop playback first', true); return; }
+
+  isExporting = true;
+  btnExport.classList.add('exporting');
+  btnExport.disabled = true;
+
+  const exportBarEl  = document.getElementById('mxExportBar');
+  const exportFillEl = document.getElementById('mxExportFill');
+  exportBarEl.classList.add('visible');
+  exportFillEl.style.width = '0%';
+
+  const dur    = mixdownBuffer ? Math.round(mixdownBuffer.duration * 1000) : (loopDuration || 5000);
+  const estSec = Math.ceil(dur / 1000);
+  showToast(`Exporting… ~${estSec}s`);
+
+  const progStart    = Date.now();
+  const progInterval = setInterval(() => {
+    exportFillEl.style.width = Math.min(((Date.now() - progStart) / dur) * 92, 92) + '%';
+  }, 80);
+
+  // Resources to clean up in finally
+  let canvasStream = null, audioDest = null, mr = null, cvs = null;
+  let drawActive = false;
+
+  const cleanup = () => {
+    drawActive = false;
+    try { mr?.state !== 'inactive' && mr?.stop(); } catch(_) {}
+    canvasStream?.getTracks().forEach(t => t.stop());
+    try { audioDest && masterGain.disconnect(audioDest); } catch(_) {}
+    stopPlayback();
+    clearInterval(progInterval);
+    exportFillEl.style.width = '0%';
+    exportBarEl.classList.remove('visible');
+    btnExport.classList.remove('exporting');
+    isExporting = false;
+    refreshExportBtn();
+  };
+
+  try {
+    // ── 1. Build 1080×1920 composite canvas (no screen-recording needed) ──
+    const OUT_W = 1080, OUT_H = 1920;
+    cvs = document.createElement('canvas');
+    cvs.width  = OUT_W;
+    cvs.height = OUT_H;
+    const ctx = cvs.getContext('2d');
+
+    const { cols: lCols, rows: lRows } = currentLayout;
+
+    // Returns true when el has a decoded frame ready to draw
+    function isDrawable(el) {
+      if (!el) return false;
+      if (el.tagName === 'VIDEO') return el.readyState >= 2;
+      if (el.tagName === 'IMG')   return el.complete && el.naturalWidth > 0;
+      return true;
+    }
+
+    // Draw one frame: cover-fit each track into its explicit grid cell
+    // Image tracks draw their <img> element; video tracks draw <video>.
+    // Asymmetric layouts use s.gridCell for exact canvas coordinates.
+    function drawFrame() {
+      if (!drawActive) return;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, OUT_W, OUT_H);
+
+      // Use fsTracks when in fullscreen; fall back to legacy soloIdx
+      const _exportSoloIdx = (fsTracks?.length === 1) ? fsTracks[0] : soloIdx;
+      if (_exportSoloIdx >= 0 && slots[_exportSoloIdx]?.drawEl) {
+        // Solo mode: single track fills full canvas
+        const el = slots[_exportSoloIdx].drawEl;
+        if (isDrawable(el)) {
+          const ew = el.videoWidth || el.naturalWidth  || OUT_W;
+          const eh = el.videoHeight || el.naturalHeight || OUT_H;
+          const scale = Math.max(OUT_W / ew, OUT_H / eh);
+          const dw = ew * scale, dh = eh * scale;
+          ctx.drawImage(el, (OUT_W - dw) / 2, (OUT_H - dh) / 2, dw, dh);
+        }
+      } else {
+        slots.forEach(s => {
+          if (!s.drawEl || s.isCamera) return;
+          const el = s.drawEl;
+          if (!isDrawable(el)) return;
+          // Use explicit cell geometry — correct for both uniform and asymmetric layouts
+          const { col, row, cSpan, rSpan } = s.gridCell;
+          const dx = (col  / lCols) * OUT_W;
+          const dy = (row  / lRows) * OUT_H;
+          const dw = (cSpan / lCols) * OUT_W;
+          const dh = (rSpan / lRows) * OUT_H;
+          const ew = el.videoWidth  || el.naturalWidth  || dw;
+          const eh = el.videoHeight || el.naturalHeight || dh;
+          const scale = Math.max(dw / ew, dh / eh);
+          const sw = ew * scale, sh = eh * scale;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(dx, dy, dw, dh);
+          ctx.clip();
+          ctx.drawImage(el, dx + (dw - sw) / 2, dy + (dh - sh) / 2, sw, sh);
+          ctx.restore();
+        });
+      }
+      requestAnimationFrame(drawFrame);
+    }
+
+    // ── 2. Audio tap ──
+    const actx = await getAudioCtx();
+    audioDest   = actx.createMediaStreamDestination();
+    masterGain.connect(audioDest);
+
+    // ── 3. Start draw loop then capture stream ──
+    drawActive = true;
+    drawFrame();
+    canvasStream = cvs.captureStream(30);
+
+    // ── 4. MediaRecorder on canvas + audio ──
+    const mime = ['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm']
+                  .find(t => MediaRecorder.isTypeSupported(t)) || '';
+    const ext  = mime.includes('mp4') ? 'mp4' : 'webm';
+    const chunks = [];
+    mr = new MediaRecorder(
+      new MediaStream([canvasStream.getVideoTracks()[0], audioDest.stream.getAudioTracks()[0]].filter(Boolean)),
+      mime ? { mimeType: mime } : {}
+    );
+    mr.ondataavailable = e => { if (e.data?.size > 0) chunks.push(e.data); };
+    mr.start(200);
+
+    // ── 5. Play and record ──
+    await startPlayback();
+    if (playTimer) { clearTimeout(playTimer); playTimer = null; }
+    await new Promise(r => setTimeout(r, dur + 400));
+
+    // ── 6. Stop capture ──
+    drawActive = false;
+    stopPlayback();
+    masterGain.disconnect(audioDest); audioDest = null;
+    canvasStream.getTracks().forEach(t => t.stop()); canvasStream = null;
+
+    const buffer = await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('MediaRecorder stop timeout')), 8000);
+      mr.onstop = async () => {
+        clearTimeout(t);
+        resolve(await new Blob(chunks, { type: mime || 'video/webm' }).arrayBuffer());
+      };
+      mr.stop();
+    });
+
+    // ── 7. Save to exports/ subfolder ──
+    const exportsDir = await window.api.pathJoin(saveDir, 'exports');
+    await window.api.ensureDir(exportsDir);
+    const filename = `reel_${nowTs()}.${ext}`;
+    const fp       = await window.api.pathJoin(exportsDir, filename);
+    const saved    = await window.api.saveFile(fp, buffer);
+
+    clearInterval(progInterval);
+    exportFillEl.style.width = '100%';
+    setTimeout(() => { exportBarEl.classList.remove('visible'); exportFillEl.style.width = '0%'; }, 700);
+
+    showToast(saved?.ok
+      ? `✓ exports/${filename}  ${OUT_W}×${OUT_H}`
+      : '⚠ Save failed', !saved?.ok);
+
+  } catch(err) {
+    console.error('Export error:', err);
+    showToast(`⚠ Export failed: ${err.message}`, true);
+  } finally {
+    cleanup();
+  }
+}
+
+btnExport.addEventListener('click', exportReel);
+
+/* ════════════════════════════════════════════════════
+   MIXDOWN OVERRIDE
+════════════════════════════════════════════════════ */
+let mixdownBuffer = null;
+let mixdownNode   = null;
+const mixdownDrop  = document.getElementById('mixdownDrop');
+const mixdownLabel = document.getElementById('mixdownLabel');
+const mixdownClear = document.getElementById('mixdownClear');
+
+async function loadMixdown(file) {
+  const ctx = await getAudioCtx();
+  try {
+    const ab  = await file.arrayBuffer();
+    mixdownBuffer = await ctx.decodeAudioData(ab);
+    mixdownDrop.classList.add('loaded');
+    mixdownLabel.textContent = file.name;
+    showToast('✓ Mixdown loaded');
+  } catch(e) {
+    console.error('Mixdown decode:', e);
+    showToast('⚠ Could not decode audio', true);
+  }
+}
+
+mixdownDrop.addEventListener('dragover', e => {
+  e.preventDefault(); mixdownDrop.classList.add('drag-over');
+});
+mixdownDrop.addEventListener('dragleave', () => {
+  mixdownDrop.classList.remove('drag-over');
+});
+mixdownDrop.addEventListener('drop', e => {
+  e.preventDefault(); mixdownDrop.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadMixdown(file);
+});
+
+mixdownClear.addEventListener('click', e => {
+  e.stopPropagation();
+  if (mixdownNode) { try { mixdownNode.stop(); } catch(_) {} mixdownNode = null; }
+  mixdownBuffer = null;
+  mixdownDrop.classList.remove('loaded');
+  mixdownLabel.textContent = 'Drop Mixdown';
+});
+
+/* ════════════════════════════════════════════════════
+   MIXER LEFT PANEL — EQ · COMP · REVERB · VOLUME
+════════════════════════════════════════════════════ */
+const MX_SEGS = 18;
+let mxTrackCount = 4; // updated when user confirms layout
+
+// Per-track processor chain: analyser → eq → parallelComp → convReverb → gain → master
+const trackFx = []; // { eq, comp, compDry, compWet, compMix, revConv, revWet, revDry, revMix, gain }
+
+// ── Generate convolution impulse response (reverb tail) ───────────────────
+function buildImpulse(ctx, duration = 2.2, decay = 2.8) {
+  const sr     = ctx.sampleRate;
+  const length = Math.floor(sr * duration);
+  const buf    = ctx.createBuffer(2, length, sr);
+  for (let c = 0; c < 2; c++) {
+    const ch = buf.getChannelData(c);
+    for (let i = 0; i < length; i++) {
+      // Exponential decay of white noise → natural room tail
+      ch[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, decay);
+    }
+  }
+  return buf;
+}
+
+// ── Create / reuse FX chain for one track ─────────────────────────────────
+async function ensureTrackFx(idx) {
+  if (!audioCtx) return null;
+  if (trackFx[idx]) return trackFx[idx];
+
+  // ─ EQ ─
+  const eq = audioCtx.createBiquadFilter();
+  eq.type = 'peaking'; eq.frequency.value = 1000; eq.Q.value = 1; eq.gain.value = 0;
+
+  // ─ Parallel compression: dry + compressed → mix ─
+  const comp = audioCtx.createDynamicsCompressor();
+  comp.threshold.value = -24; comp.knee.value = 6;
+  comp.ratio.value = 8;       comp.attack.value = 0.002;
+  comp.release.value = 0.12;
+  const compDry = audioCtx.createGain(); compDry.gain.value = 1;
+  const compWet = audioCtx.createGain(); compWet.gain.value = 0; // knob=0 → dry only
+  const compMix = audioCtx.createGain(); compMix.gain.value = 1;
+
+  eq.connect(compDry); compDry.connect(compMix);
+  eq.connect(comp);    comp.connect(compWet); compWet.connect(compMix);
+
+  // ─ Convolver reverb: dry + wet → mix ─
+  const revConv = audioCtx.createConvolver();
+  revConv.buffer = buildImpulse(audioCtx, 2.2, 2.8);
+  const revDry = audioCtx.createGain(); revDry.gain.value = 1;
+  const revWet = audioCtx.createGain(); revWet.gain.value = 0; // knob=0 → dry only
+  const revMix = audioCtx.createGain(); revMix.gain.value = 1;
+
+  compMix.connect(revDry);  revDry.connect(revMix);
+  compMix.connect(revConv); revConv.connect(revWet); revWet.connect(revMix);
+
+  // ─ Output gain → master ─
+  const gain = audioCtx.createGain(); gain.gain.value = 0.8;
+  revMix.connect(gain);
+  gain.connect(masterGain);
+
+  const fx = { eq, comp, compDry, compWet, compMix, revConv, revWet, revDry, revMix, gain };
+  trackFx[idx] = fx;
+
+  // Reconnect this slot's analyser into our chain
+  const s = slots[idx];
+  if (s && s.analyser) {
+    try { s.analyser.disconnect(); } catch(_) {}
+    s.analyser.connect(eq);
+    eq.connect(comp); // main chain entry already wired above
+  }
+  return fx;
+}
+
+// ── Apply EQ (gain in dB, -15 to +15) ─────────────────────────────────────
+async function applyEq(idx, dbGain) {
+  const fx = await ensureTrackFx(idx);
+  if (!fx) return;
+  fx.eq.gain.setTargetAtTime(dbGain, audioCtx.currentTime, 0.02);
+}
+
+// ── Apply Compression (0=dry, 1=fully parallel-compressed) ────────────────
+async function applyComp(idx, amount) {
+  const fx = await ensureTrackFx(idx);
+  if (!fx) return;
+  // Blend dry ↔ compressed; also tighten threshold for more punch at higher values
+  const t = audioCtx.currentTime;
+  fx.compWet.gain.setTargetAtTime(amount,             t, 0.02);
+  fx.compDry.gain.setTargetAtTime(1 - amount * 0.5,   t, 0.02); // keep some dry punch
+  // threshold: -12 dB (light) → -40 dB (heavy brick-wall) as knob increases
+  fx.comp.threshold.setTargetAtTime(-12 - amount * 28, t, 0.02);
+}
+
+// ── Apply Reverb (0=dry, 1=lush room) ─────────────────────────────────────
+async function applyReverb(idx, wet) {
+  const fx = await ensureTrackFx(idx);
+  if (!fx) return;
+  const t = audioCtx.currentTime;
+  fx.revWet.gain.setTargetAtTime(wet,           t, 0.05); // smooth fade-in
+  fx.revDry.gain.setTargetAtTime(1 - wet * 0.5, t, 0.05); // preserve presence
+}
+
+// ── Apply Volume ──────────────────────────────────────────────────────────
+async function applyVolume(idx, value) {
+  const fx = await ensureTrackFx(idx);
+  if (!fx) return;
+  fx.gain.gain.setTargetAtTime(value, audioCtx.currentTime, 0.02);
+}
+
+// ── Knob helper ───────────────────────────────────────────────────────────
+function makeKnobDraggable(el, onChange) {
+  let startY = 0, startVal = 0;
+  function setVal(v) {
+    v = Math.max(0, Math.min(100, v));
+    el.dataset.val = v;
+    el.style.setProperty('--knob-rot', (-135 + (v / 100) * 270) + 'deg');
+    onChange(v / 100);
+  }
+  el.addEventListener('mousedown', e => {
+    e.preventDefault();
+    startY = e.clientY; startVal = parseFloat(el.dataset.val) || 50;
+    const move = ev => setVal(startVal - (ev.clientY - startY) * 0.6);
+    const up   = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+  setVal(parseFloat(el.dataset.val) || 50);
+}
+
+// ── Custom vertical fader (drag-based, analog style) ─────────────────────
+function makeCustomFader(wrapEl, initVal, onChange) {
+  const CAP_H  = 9;   // px, must match CSS .mx-fader-cap height
+  const MARGIN = 3;   // must match CSS .mx-fader-track top/bottom
+  let value = initVal;
+
+  const track = document.createElement('div'); track.className = 'mx-fader-track';
+  const cap   = document.createElement('div'); cap.className   = 'mx-fader-cap';
+  wrapEl.appendChild(track);
+  wrapEl.appendChild(cap);
+
+  function setPos() {
+    const wrapH = wrapEl.offsetHeight || 68;
+    const range = wrapH - MARGIN * 2 - CAP_H;
+    cap.style.top = (MARGIN + (1 - value / 100) * range) + 'px';
+  }
+
+  function setVal(v) {
+    value = Math.max(0, Math.min(100, v));
+    setPos();
+    onChange(value / 100);
+  }
+
+  let startY = 0, startVal = 0;
+  cap.addEventListener('mousedown', e => {
+    e.preventDefault(); e.stopPropagation();
+    startY = e.clientY; startVal = value;
+    const move = ev => setVal(startVal - (ev.clientY - startY) * 0.9);
+    const up   = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', up);
+  });
+
+  // Re-calculate position after layout settles
+  requestAnimationFrame(setPos);
+  return { setVal };
+}
+
+function buildMixerStrips(n) {
+  const container = document.getElementById('mxStrips');
+  container.innerHTML = '';
+  container.classList.toggle('many', n >= 7);
+
+  for (let i = 0; i < n; i++) {
+    const strip = document.createElement('div');
+    strip.className = 'mx-strip';
+
+    // ── Top row: [👁 Eye] [+ Add to FS] ──────────────────────────────────
+    const topRow = document.createElement('div');
+    topRow.style.cssText = 'display:flex;gap:2px;align-self:stretch;flex-shrink:0';
+
+    // Eye — enters FS with ONLY this track
+    const soloBtn = document.createElement('button');
+    soloBtn.className = 'mx-solo-btn';
+    soloBtn.title = 'Fullscreen (tap again to exit)';
+    soloBtn.style.flex = '1';
+    soloBtn.innerHTML = `<svg width="10" height="10" viewBox="0 0 24 24" fill="none"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+      <circle cx="12" cy="12" r="3"/>
+    </svg>`;
+    soloBtn.addEventListener('click', () => setSolo(i));
+
+    // + — adds this track to the current FS composition
+    const addBtn = document.createElement('button');
+    addBtn.className = 'mx-add-btn';
+    addBtn.title = 'Add to fullscreen view';
+    addBtn.style.flex = '1';
+    addBtn.textContent = '+';
+    addBtn.addEventListener('click', () => fsAddTrack(i));
+
+    topRow.appendChild(soloBtn);
+    topRow.appendChild(addBtn);
+
+    // ── Track number ─────────────────────────────────────────────────────
+    const num = document.createElement('div');
+    num.className = 'mx-track-num';
+    num.textContent = String(i + 1).padStart(2, '0');
+
+    // ── VU bar graph ─────────────────────────────────────────────────────
+    const bars = document.createElement('div');
+    bars.className = 'mx-bars'; bars.id = `mx-bars-${i}`;
+    for (let s = 0; s < MX_SEGS; s++) {
+      const seg = document.createElement('div'); seg.className = 'mx-bar-seg';
+      bars.appendChild(seg);
+    }
+
+    // ── Mini knobs ───────────────────────────────────────────────────────
+    const miniKnobs = document.createElement('div'); miniKnobs.className = 'mx-mini-knobs';
+    const knobDefs = [
+      { cls: 'eq-knob',  def: 50, cb: v => applyEq(i, (v - 0.5) * 30) },
+      { cls: 'cmp-knob', def:  0, cb: v => applyComp(i, v) },
+      { cls: 'rev-knob', def:  0, cb: v => applyReverb(i, v) },
+    ];
+    knobDefs.forEach(({ cls, def, cb }) => {
+      const knob = document.createElement('div');
+      knob.className = `mx-mini-knob ${cls}`; knob.dataset.val = def;
+      makeKnobDraggable(knob, cb);
+      miniKnobs.appendChild(knob);
+    });
+
+    // ── Fader + label ─────────────────────────────────────────────────────
+    const faderWrap = document.createElement('div'); faderWrap.className = 'mx-fader-wrap';
+    makeCustomFader(faderWrap, 80, v => applyVolume(i, v));
+
+    const label = document.createElement('div');
+    label.className = 'mx-track-label'; label.textContent = `T${i + 1}`;
+
+    strip.appendChild(topRow);
+    strip.appendChild(num);
+    strip.appendChild(bars);
+    strip.appendChild(miniKnobs);
+    strip.appendChild(faderWrap);
+    strip.appendChild(label);
+    container.appendChild(strip);
+  }
+}
+
+// ── Mixer live layout bar ─────────────────────────────────────────────────
+function buildMxLayoutBar() {
+  const bar = document.getElementById('mxLayoutBar');
+  if (!bar) return;
+  bar.innerHTML = '';
+  LAYOUTS.forEach(layout => {
+    const btn = document.createElement('button');
+    btn.className = 'mx-layout-opt' + (layout === currentLayout ? ' active' : '');
+    btn.title = `${layout.label} tracks`;
+
+    const icon = document.createElement('div');
+    icon.className = 'ml-icon';
+    icon.style.gridTemplateColumns = `repeat(${layout.cols}, 3.5px)`;
+    icon.style.gridTemplateRows    = `repeat(${layout.rows}, 4px)`;
+    icon.style.gap = '1.5px';
+    layout.cells.forEach(cell => {
+      const d = document.createElement('div'); d.className = 'ml-dot';
+      d.style.gridColumn = `${cell.col + 1} / span ${cell.cSpan}`;
+      d.style.gridRow    = `${cell.row + 1} / span ${cell.rSpan}`;
+      icon.appendChild(d);
+    });
+
+    const lbl = document.createElement('div');
+    lbl.className = 'ml-n'; lbl.textContent = layout.label;
+
+    btn.appendChild(icon); btn.appendChild(lbl);
+    btn.addEventListener('click', () => {
+      if (layout === currentLayout) return;
+      switchLayout(layout);
+      applyLayout(layout);
+      mxTrackCount = layout.n;
+      buildMixerStrips(mxTrackCount);
+      buildMxLayoutBar();
+      startMxVuLoop();
+      // Sync landing picker selection too
+      document.querySelectorAll('#layoutPicker .layout-opt').forEach((b, j) => {
+        b.classList.toggle('selected', LAYOUTS[j] === layout);
+      });
+    });
+    bar.appendChild(btn);
+  });
+}
+
+// ── Bar graph VU loop ─────────────────────────────────────────────────────
+const mxDataArr = new Uint8Array(128);
+let mxVuRaf = null;
+function startMxVuLoop() {
+  const loop = () => {
+    for (let i = 0; i < mxTrackCount; i++) {
+      const s = slots[i];
+      const barsEl = document.getElementById(`mx-bars-${i}`);
+      if (!barsEl) continue;
+      const segs = barsEl.querySelectorAll('.mx-bar-seg');
+      let lv = 0;
+      if (s && s.analyser) {
+        s.analyser.getByteFrequencyData(mxDataArr);
+        const avg = mxDataArr.reduce((a, b) => a + b, 0) / mxDataArr.length;
+        lv = Math.min(Math.round((avg / 255) * MX_SEGS * 2.2), MX_SEGS);
+      }
+      segs.forEach((seg, idx) => {
+        seg.className = idx < lv
+          ? `mx-bar-seg ${idx < 10 ? 'on-lo' : idx < 14 ? 'on-mid' : 'on-hi'}`
+          : 'mx-bar-seg';
+      });
+    }
+    mxVuRaf = requestAnimationFrame(loop);
+  };
+  if (mxVuRaf) cancelAnimationFrame(mxVuRaf);
+  loop();
+}
+
+// ── Timecode mirror + transport sync (single 80ms tick) ──────────────────
+const mxTimecode = document.getElementById('mx-timecode');
+const mxBtnRec   = document.getElementById('mxBtnRec');
+const mxBtnPlay  = document.getElementById('mxBtnPlay');
+const mxBtnExport= document.getElementById('mxBtnExport');
+setInterval(() => {
+  const src = document.getElementById('timerDisplay');
+  if (src && mxTimecode) {
+    mxTimecode.textContent = src.textContent.split('/')[0].trim();
+    mxTimecode.classList.toggle('active', isRecording || isPlaying);
+  }
+  mxBtnRec?.classList.toggle('active', isRecording);
+  mxBtnPlay?.classList.toggle('active', isPlaying);
+  mxBtnExport?.classList.toggle('spinning', isExporting);
+}, 80);
+
+document.getElementById('mxBtnRec').addEventListener('click',  () => document.getElementById('btnRecord').click());
+document.getElementById('mxBtnPlay').addEventListener('click', () => document.getElementById('btnPlay').click());
+document.getElementById('mxBtnStop').addEventListener('click', async () => {
+  if (isPlaying) stopPlayback();
+  if (isRecording) {
+    isRecording = false;
+    document.getElementById('btnRecord').classList.remove('recording');
+    document.getElementById('mxBtnRec').classList.remove('active');
+    await stopRecording();
+  }
+});
+document.getElementById('mxBtnExport').addEventListener('click', exportReel);
+
+// ── Main knobs (EQ / Reverb / Master) ────────────────────────────────────
+document.querySelectorAll('.mx-knob').forEach(knob => {
+  makeKnobDraggable(knob, v => {
+    if (knob.dataset.knob === '2') {
+      if (masterGain) masterGain.gain.setTargetAtTime(v * 1.5, audioCtx?.currentTime || 0, 0.02);
+    }
+  });
+});
+
+buildMixerStrips(mxTrackCount);
+buildMxLayoutBar();
+startMxVuLoop();
+
+// Conversion is wired directly inside loadTrackPairs above
+
+/* ════════════════════════════════════════════════════
+   TOAST
+════════════════════════════════════════════════════ */
+const toastEl=document.getElementById('saveToast');
+let toastTimer;
+function showToast(msg,isError=false){
+  toastEl.textContent=msg;
+  toastEl.classList.toggle('is-error',isError);
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>toastEl.classList.remove('show'),3200);
+}
+</script>
+</body>
+</html>
