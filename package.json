@@ -16,6 +16,7 @@
     "mac": {
       "icon": "assets/icon.icns",
       "category": "public.app-category.music",
+      "artifactName": "MultiTrackMusic-${version}-universal.dmg",
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",
       "entitlementsInherit": "entitlements.mac.inherit.plist",
@@ -29,6 +30,11 @@
           "arch": ["arm64", "x64"]
         }
       ]
+    },
+    "win": {
+      "icon": "assets/musicmem.png",
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "MultiTrackMusic-Setup-${version}.exe"
     },
     "files": [
       "index.html",
