@@ -89,3 +89,7 @@ For commercial licensing: juannog@gmail.com
 ## Contributing
 
 Issues and pull requests welcome. Please open an issue first to discuss significant changes.
+
+---
+
+*Built with the assistance of AI coding tools.*
