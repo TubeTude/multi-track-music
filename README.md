@@ -85,15 +85,27 @@ The app will be in `dist/mac-arm64/Multi-Track Music.app`.
 
 ### Build for Quill / ARM64 Linux
 
-Run this **on an ARM64 Linux machine** (the Quill itself works). `ffmpeg-static`
-downloads a single platform-specific binary at install time, so cross-building from
-an x64 host would package the wrong ffmpeg:
-
 ```bash
 npm run build:linux
 ```
 
-Produces a `.deb` and an `.AppImage` in `dist/`.
+Produces `MultiTrackMusic-<version>-arm64.deb` and `.AppImage` in `dist/`.
+
+Two constraints are worth knowing before you try this on the Quill itself:
+
+- **The `.deb` cannot be built on an ARM64 host.** electron-builder bundles only an
+  x86 `fpm`, so deb packaging dies with `Exec format error` on the Quill or on an
+  ARM64 CI runner. Build it from macOS or x64 Linux instead — `fpm` merely packages
+  the already-cross-compiled ARM payload, so the result is still a valid arm64
+  package. The AppImage builds fine on any host.
+- **`ffmpeg-static` downloads a single platform binary at install time.** When
+  building from an x64 host, set the target arch explicitly or you will bundle an
+  x86 ffmpeg inside an ARM app:
+
+  ```bash
+  npm_config_platform=linux npm_config_arch=arm64 npm ci
+  file node_modules/ffmpeg-static/ffmpeg   # should report ARM aarch64
+  ```
 
 ### Build universal DMG (arm64 + x64)
 

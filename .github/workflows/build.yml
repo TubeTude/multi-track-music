@@ -44,20 +44,28 @@ jobs:
         with:
           files: dist/*.exe
 
-  # QuillOS / ARM64 Ubuntu. Must run on a native arm64 runner: ffmpeg-static
-  # downloads a single platform binary at install time, so cross-building from
-  # x64 would ship an x86 ffmpeg inside an ARM app.
+  # QuillOS / ARM64 Ubuntu. Runs on x64 rather than an arm64 runner: electron-builder
+  # only ships an x86 fpm binary, so .deb packaging dies with "Exec format error" on
+  # an arm64 host. fpm itself is arch-agnostic — it just packages the arm64 Electron
+  # payload — but ffmpeg-static resolves its download from npm_config_arch, so that is
+  # set explicitly and then verified, otherwise an x86 ffmpeg ships inside an ARM app.
   build-linux-arm64:
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-latest
+    env:
+      npm_config_platform: linux
+      npm_config_arch: arm64
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-      - name: Install packaging deps
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fakeroot
       - run: npm ci
+      - name: Verify bundled ffmpeg is ARM64
+        run: |
+          file node_modules/ffmpeg-static/ffmpeg
+          file node_modules/ffmpeg-static/ffmpeg | grep -q 'ARM aarch64' \
+            || { echo "::error::ffmpeg-static is not the arm64 build"; exit 1; }
       - name: Build Linux ARM64 (deb + AppImage)
         run: npx electron-builder --linux deb AppImage --arm64 --publish never
       - name: Upload Linux ARM64 builds to release
