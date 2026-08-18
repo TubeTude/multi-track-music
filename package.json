@@ -1,8 +1,12 @@
 {
   "name": "multi-track-music",
   "productName": "Multi-Track Music",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Multi-Track Music \u2014 synced multi-track audio/video recorder",
+  "author": {
+    "name": "TubeTude",
+    "email": "TubeTude@users.noreply.github.com"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
