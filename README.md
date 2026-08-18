@@ -29,7 +29,18 @@ A professional multi-camera video recorder with a built-in mixing console for Ma
 | Linux ARM64 (Quill / Raspberry Pi / ARM Ubuntu) | `MultiTrackMusic-<version>-arm64.deb` | Recommended — apt resolves dependencies |
 | Linux ARM64 (no install) | `MultiTrackMusic-<version>-arm64.AppImage` | Portable; needs FUSE |
 
-> **First launch on macOS:** Right-click the app → Open → Open (one-time security bypass for unsigned apps)
+> **First launch on macOS.** The app is not signed or notarized, so Gatekeeper blocks it
+> with "Apple could not verify... is free of malware". Click **Done** — never "Move to Trash".
+>
+> The old right-click → Open bypass **no longer works on macOS 15 and later**. Instead open
+> **System Settings → Privacy & Security**, scroll down to Security, and click **Open Anyway**
+> next to the Multi-Track Music message (it appears only after a blocked launch attempt).
+>
+> Or clear the quarantine flag from a terminal:
+>
+> ```bash
+> xattr -dr com.apple.quarantine "/Applications/Multi-Track Music.app"
+> ```
 
 ### Installing on Quill / ARM64 Ubuntu
 
