@@ -1688,7 +1688,12 @@ function _restoreSnap(snap, s, i, sourceIdx = i) {
       ov.querySelector('.pend-redo').addEventListener('click', e => { e.stopPropagation(); discardTake(i); });
     }
     if (shouldResume && !snap.isPending) {
-      requestAnimationFrame(() => snap.videoEl.play().catch(() => {}));
+      // The rebuild detached this element, and paused it outright if the
+      // previous layout wasn't showing this track. Put it back on the clock.
+      requestAnimationFrame(() => {
+        syncVideoToPlayback(snap.videoEl, { hard: true });
+        snap.videoEl.play().catch(() => {});
+      });
     }
   }
   refreshVu(s);
@@ -1726,6 +1731,10 @@ function switchLayout(newLayout) {
 
 let isRecording=false, isPlaying=false;
 let recStartTime=0, playStartTime=0;
+// AudioContext time at which media position 0 plays. Audio rides the Web Audio
+// clock and ignores the DOM, so videos re-seek against this anchor whenever a
+// grid rebuild has knocked them off the mix.
+let playAnchorCtxTime=null;
 let sessionTs='';
 let loopDuration=0;
 let loopTimer=null, playTimer=null;
@@ -1876,11 +1885,38 @@ async function discardTake(idx) {
 /* ════════════════════════════════════════════════════
    PLAYBACK  — one-shot, auto-stops at loopDuration
 ════════════════════════════════════════════════════ */
+// Where the mix currently is, in seconds. null when nothing is playing.
+function playbackPositionSec() {
+  if (!isPlaying || !audioCtx || playAnchorCtxTime == null) return null;
+  return Math.max(0, audioCtx.currentTime - playAnchorCtxTime);
+}
+
+// Pull one video back onto the audio clock. Hard-seeks when the gap is large —
+// a track hidden across a layout switch sits paused while its audio runs on —
+// otherwise nudges playbackRate so the correction stays invisible.
+function syncVideoToPlayback(videoEl, { hard = false } = {}) {
+  if (!videoEl || videoEl.seeking) return;
+  const pos = playbackPositionSec();
+  if (pos == null) return;
+  // Clip already ran out; leave it parked rather than re-triggering 'ended'.
+  const dur = videoEl.duration;
+  if (Number.isFinite(dur) && dur > 0 && pos > dur - 0.08) return;
+  const drift = videoEl.currentTime - pos;
+  if (hard || Math.abs(drift) > 0.75) {
+    if (Math.abs(drift) > 0.05) { try { videoEl.currentTime = pos; } catch(_) {} }
+    try { videoEl.playbackRate = 1; } catch(_) {}
+  } else {
+    try { videoEl.playbackRate = Math.max(0.94, Math.min(1.06, 1 - drift * 0.14)); } catch(_) {}
+  }
+  if (videoEl.paused) videoEl.play().catch(()=>{});
+}
+
 async function startPlayback(opts = {}) {
   const ctx=await getAudioCtx();
   const startAt = opts.startAt ?? 0;
   const videoEls = opts.videoEls || slots.filter(s => s.videoEl && !s.isCamera).map(s => s.videoEl);
   const videoDelayMs = Math.max(0, (startAt - ctx.currentTime) * 1000);
+  playAnchorCtxTime = startAt || ctx.currentTime;
   // Always play videos silently for the visual
   const playVideos = () => {
     videoEls.forEach(videoEl => {
@@ -1932,9 +1968,19 @@ function stopPlayback() {
     if(s.playbackNode){try{s.playbackNode.stop();}catch(_){}s.playbackNode=null;}
   });
   if(mixdownNode){try{mixdownNode.stop();}catch(_){}mixdownNode=null;}
-  isPlaying=false;
+  isPlaying=false; playAnchorCtxTime=null;
   document.getElementById('btnPlay').classList.remove('playing');
 }
+
+// Hold visible videos on the audio clock for the rest of the take: repeated
+// layout toggles and long runs both accumulate drift. Export runs its own
+// tighter corrector against the same anchor, so stand down while it does.
+setInterval(() => {
+  if (!isPlaying || isExporting) return;
+  slots.forEach(s => {
+    if (s.videoEl && !s.isCamera && !s.isPending) syncVideoToPlayback(s.videoEl);
+  });
+}, 500);
 
 /* ════════════════════════════════════════════════════
    RECORD
