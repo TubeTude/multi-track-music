@@ -1,14 +1,15 @@
 {
   "name": "multi-track-music",
   "productName": "Multi-Track Music",
-  "version": "1.0.0",
-  "description": "Multi-Track Music — synced multi-track audio/video recorder",
+  "version": "1.1.0",
+  "description": "Multi-Track Music \u2014 synced multi-track audio/video recorder",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
     "build": "electron-builder --mac",
     "build:dir": "electron-builder --mac --dir",
-    "build:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir"
+    "build:local": "CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --dir",
+    "build:linux": "electron-builder --linux deb AppImage --arm64"
   },
   "build": {
     "appId": "com.multitrackmusic.app",
@@ -23,18 +24,55 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         },
         {
           "target": "dir",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ]
     },
     "win": {
       "icon": "assets/musicmem.png",
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "artifactName": "MultiTrackMusic-Setup-${version}.exe"
+    },
+    "linux": {
+      "icon": "assets/musicmem.png",
+      "category": "AudioVideo",
+      "synopsis": "Synced multi-track audio/video recorder",
+      "description": "Multi-camera video recorder with a built-in mixing console. Capture up to 12 synchronized video + WAV tracks and export a 9:16 reel.",
+      "desktop": {
+        "StartupWMClass": "Multi-Track Music"
+      },
+      "target": [
+        {
+          "target": "deb",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "AppImage",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "artifactName": "MultiTrackMusic-${version}-${arch}.${ext}"
     },
     "files": [
       "index.html",

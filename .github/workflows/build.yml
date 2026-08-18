@@ -43,3 +43,26 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*.exe
+
+  # QuillOS / ARM64 Ubuntu. Must run on a native arm64 runner: ffmpeg-static
+  # downloads a single platform binary at install time, so cross-building from
+  # x64 would ship an x86 ffmpeg inside an ARM app.
+  build-linux-arm64:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - name: Install packaging deps
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fakeroot
+      - run: npm ci
+      - name: Build Linux ARM64 (deb + AppImage)
+        run: npx electron-builder --linux deb AppImage --arm64 --publish never
+      - name: Upload Linux ARM64 builds to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.deb
+            dist/*.AppImage

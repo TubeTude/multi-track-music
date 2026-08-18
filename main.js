@@ -19,19 +19,22 @@ let win;
 
 function setMenu() {
   const name = app.name;
+  // hide / hideOthers / unhide are macOS-only roles — keep the app menu minimal
+  // elsewhere so the Linux (Quill) and Windows builds get a valid template.
+  const isMac = process.platform === 'darwin';
+  const appSubmenu = [
+    { label: `About ${name}`, role: 'about' },
+    { type: 'separator' },
+    ...(isMac ? [
+      { label: `Hide ${name}`, role: 'hide' },
+      { role: 'hideOthers' },
+      { role: 'unhide' },
+      { type: 'separator' },
+    ] : []),
+    { label: `Quit ${name}`, role: 'quit' }
+  ];
   const menu = Menu.buildFromTemplate([
-    {
-      label: name,
-      submenu: [
-        { label: `About ${name}`, role: 'about' },
-        { type: 'separator' },
-        { label: `Hide ${name}`, role: 'hide' },
-        { role: 'hideOthers' },
-        { role: 'unhide' },
-        { type: 'separator' },
-        { label: `Quit ${name}`, role: 'quit' }
-      ]
-    },
+    { label: name, submenu: appSubmenu },
     {
       label: 'Edit',
       submenu: [

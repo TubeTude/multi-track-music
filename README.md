@@ -20,11 +20,38 @@ A professional multi-camera video recorder with a built-in mixing console for Ma
 
 ## Download
 
-**[Download Multi-Track Music v1.0.0 (Mac Universal)](https://github.com/TubeTude/multi-track-music/releases/latest)**
+**[All downloads — latest release](https://github.com/TubeTude/multi-track-music/releases/latest)**
 
-Requires macOS 10.12 or later · Works on Apple Silicon and Intel Macs
+| Platform | File | Notes |
+|---|---|---|
+| macOS (Apple Silicon + Intel) | `MultiTrackMusic-<version>-universal.dmg` | macOS 10.12 or later |
+| Windows | `MultiTrackMusic-Setup-<version>.exe` | 64-bit |
+| Linux ARM64 (Quill / Raspberry Pi / ARM Ubuntu) | `MultiTrackMusic-<version>-arm64.deb` | Recommended — apt resolves dependencies |
+| Linux ARM64 (no install) | `MultiTrackMusic-<version>-arm64.AppImage` | Portable; needs FUSE |
 
-> **First launch:** Right-click the app → Open → Open (one-time security bypass for unsigned apps)
+> **First launch on macOS:** Right-click the app → Open → Open (one-time security bypass for unsigned apps)
+
+### Installing on Quill / ARM64 Ubuntu
+
+QuillOS is Ubuntu-based on ARM64, so the `.deb` is the smoothest path — `apt` pulls in
+Electron's runtime libraries for you:
+
+```bash
+sudo apt install ./MultiTrackMusic-<version>-arm64.deb
+```
+
+Launch it from the GNOME activities overview, or run `multi-track-music` from a terminal.
+
+Prefer no install? Use the AppImage:
+
+```bash
+chmod +x MultiTrackMusic-<version>-arm64.AppImage
+./MultiTrackMusic-<version>-arm64.AppImage
+```
+
+If the AppImage won't start, the usual causes are a missing FUSE library
+(`sudo apt install libfuse2`) or a kernel that restricts user namespaces — in the
+latter case run it with `--no-sandbox`.
 
 ---
 
@@ -55,6 +82,18 @@ npm run build:local
 ```
 
 The app will be in `dist/mac-arm64/Multi-Track Music.app`.
+
+### Build for Quill / ARM64 Linux
+
+Run this **on an ARM64 Linux machine** (the Quill itself works). `ffmpeg-static`
+downloads a single platform-specific binary at install time, so cross-building from
+an x64 host would package the wrong ffmpeg:
+
+```bash
+npm run build:linux
+```
+
+Produces a `.deb` and an `.AppImage` in `dist/`.
 
 ### Build universal DMG (arm64 + x64)
 
