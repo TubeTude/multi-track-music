@@ -21,6 +21,10 @@
     "mac": {
       "icon": "assets/icon.icns",
       "category": "public.app-category.music",
+      "extendInfo": {
+        "NSCameraUsageDescription": "Multi-Track Music uses the camera to record video tracks.",
+        "NSMicrophoneUsageDescription": "Multi-Track Music uses the microphone to record audio tracks."
+      },
       "artifactName": "MultiTrackMusic-${version}-universal.dmg",
       "hardenedRuntime": true,
       "entitlements": "entitlements.mac.plist",

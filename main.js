@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, session, systemPreferences, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, session, Menu } = require('electron');
 const path   = require('path');
 const fs     = require('fs');
 const { execFile } = require('child_process');
@@ -56,11 +56,6 @@ app.whenReady().then(async () => {
   if (process.platform === 'darwin' && app.dock && fs.existsSync(ICON)) {
     try { app.dock.setIcon(ICON); } catch (e) { console.warn('dock icon:', e.message); }
   }
-  if (process.platform === 'darwin') {
-    await systemPreferences.askForMediaAccess('camera');
-    await systemPreferences.askForMediaAccess('microphone');
-  }
-
   createWindow();
 
   app.on('activate', () => {
@@ -202,4 +197,3 @@ ipcMain.handle('ensure-dir', async (_e, dirPath) => {
     return { ok: true };
   } catch (err) { return { ok: false, error: err.message }; }
 });
-

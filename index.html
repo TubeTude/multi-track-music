@@ -1136,13 +1136,26 @@ async function getAudioCtx() {
 ════════════════════════════════════════════════════ */
 let selectedVideoDeviceId = null;
 let selectedAudioDeviceId = null;
+let mediaPermissionRequest = null;
+
+// A single combined request unlocks device labels and lets macOS present each
+// privacy prompt at most once. Reuse it if the user revisits the device step.
+function requestMediaPermissionOnce() {
+  if (!mediaPermissionRequest) {
+    mediaPermissionRequest = navigator.mediaDevices
+      .getUserMedia({ video:true, audio:true })
+      .then(stream => {
+        stream.getTracks().forEach(track => track.stop());
+        return true;
+      })
+      .catch(() => false);
+  }
+  return mediaPermissionRequest;
+}
 
 async function populateDevices() {
-  // Brief getUserMedia so macOS releases device labels
-  try {
-    const tmp = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
-    tmp.getTracks().forEach(t => t.stop());
-  } catch(e) { /* ok if some fail */ }
+  // Brief access releases device labels; the promise prevents repeat prompts.
+  await requestMediaPermissionOnce();
 
   const devices = await navigator.mediaDevices.enumerateDevices();
   const vDevs   = devices.filter(d => d.kind==='videoinput');
@@ -2133,7 +2146,6 @@ async function exportReel() {
     cvs.height = OUT_H;
     const ctx = cvs.getContext('2d');
 
-    const { cols: lCols, rows: lRows } = currentLayout;
     const exportVideoEls = slots
       .filter(s => s.drawEl && !s.isCamera && s.drawEl.tagName === 'VIDEO')
       .map(s => s.drawEl);
@@ -2264,15 +2276,10 @@ async function exportReel() {
         drawCoverIntoCell(slots[soloIdx].drawEl, 0, 0, OUT_W, OUT_H);
       } else {
         const drawableSlots = slots.filter(s => s.drawEl && !s.isCamera);
-        if (drawableSlots.length === 2) {
-          const twoUpCells = getFullscreenExportCells(2);
-          drawableSlots.forEach((s, cellIdx) => {
-            const { x, y, w, h } = twoUpCells[cellIdx];
-            drawCoverIntoCell(s.drawEl, x, y, w, h);
-          });
-          requestAnimationFrame(drawFrame);
-          return;
-        }
+        // Read the layout on every frame. The mixer can switch views while an
+        // export is recording, so dimensions captured at export start become
+        // stale and make the saved composition diverge from the live preview.
+        const { cols: lCols, rows: lRows } = currentLayout;
 
         drawableSlots.forEach(s => {
           const el = s.drawEl;
