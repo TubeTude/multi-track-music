@@ -1137,6 +1137,18 @@ async function getAudioCtx() {
 let selectedVideoDeviceId = null;
 let selectedAudioDeviceId = null;
 let mediaPermissionRequest = null;
+const reusableMediaStreams = new Map();
+
+function mediaStreamKey(videoDeviceId, audioDeviceId) {
+  return `${videoDeviceId || 'default'}::${audioDeviceId || 'default'}`;
+}
+
+function cacheMediaStream(stream) {
+  const videoId = stream.getVideoTracks()[0]?.getSettings().deviceId || null;
+  const audioId = stream.getAudioTracks()[0]?.getSettings().deviceId || null;
+  reusableMediaStreams.set(mediaStreamKey(videoId, audioId), stream);
+  return stream;
+}
 
 // A single combined request unlocks device labels and lets macOS present each
 // privacy prompt at most once. Reuse it if the user revisits the device step.
@@ -1144,14 +1156,41 @@ function requestMediaPermissionOnce() {
   if (!mediaPermissionRequest) {
     mediaPermissionRequest = navigator.mediaDevices
       .getUserMedia({ video:true, audio:true })
-      .then(stream => {
-        stream.getTracks().forEach(track => track.stop());
-        return true;
-      })
-      .catch(() => false);
+      .then(cacheMediaStream)
+      .catch(() => null);
   }
   return mediaPermissionRequest;
 }
+
+async function getReusableMediaStream(videoConstraints, audioConstraints) {
+  const key = mediaStreamKey(selectedVideoDeviceId, selectedAudioDeviceId);
+  let source = reusableMediaStreams.get(key);
+
+  if (!source || source.getTracks().some(track => track.readyState === 'ended')) {
+    const initial = await requestMediaPermissionOnce();
+    const initialVideoId = initial?.getVideoTracks()[0]?.getSettings().deviceId || null;
+    const initialAudioId = initial?.getAudioTracks()[0]?.getSettings().deviceId || null;
+    if (initial && mediaStreamKey(initialVideoId, initialAudioId) === key) {
+      source = initial;
+    } else {
+      source = cacheMediaStream(await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints,
+        audio: audioConstraints,
+      }));
+      reusableMediaStreams.set(key, source);
+    }
+  }
+
+  // Keep one physical capture session alive for the whole app. Electron can end
+  // the underlying macOS session when the final clone is stopped, which makes an
+  // unsigned build ask for microphone permission again on the next slot.
+  return source;
+}
+
+window.addEventListener('beforeunload', () => {
+  reusableMediaStreams.forEach(stream => stream.getTracks().forEach(track => track.stop()));
+  reusableMediaStreams.clear();
+});
 
 async function populateDevices() {
   // Brief access releases device labels; the promise prevents repeat prompts.
@@ -1377,7 +1416,7 @@ function _clearSlotContent(idx) {
   if (s.recordedSamples && !s.isPending) takeCount = Math.max(0, takeCount - 1);
   stopPlayback();
   if (s.playbackNode) { try{s.playbackNode.stop();}catch(_){} s.playbackNode=null; }
-  if (s.cameraStream) { s.cameraStream.getTracks().forEach(t=>t.stop()); s.cameraStream=null; }
+  if (s.cameraStream) { s.cameraStream=null; }
   if (s.micSource)    { s.micSource.disconnect(); s.micSource=null; }
   if (s.analyser)     { s.analyser.disconnect(); s.analyser=null; }
   if (s.videoEl)      { s.videoEl.pause(); s.videoEl=null; }
@@ -1487,9 +1526,7 @@ async function activateCamera(idx) {
       : { echoCancellation:false, noiseSuppression:false, autoGainControl:false,
           sampleRate:48000, channelCount:1, latency:0 };
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: videoConstraints, audio: audioConstraints,
-    });
+    const stream = await getReusableMediaStream(videoConstraints, audioConstraints);
     s.card.innerHTML=''; s.card.classList.remove('empty'); s.card.classList.add('camera-active');
     const vid=document.createElement('video');
     vid.srcObject=stream; vid.autoplay=true; vid.muted=true;
@@ -1511,7 +1548,6 @@ async function activateCamera(idx) {
 
 function deactivateCamera(idx) {
   const s=slots[idx]; if (!s.isCamera) return;
-  s.cameraStream?.getTracks().forEach(t=>t.stop());
   s.micSource?.disconnect();
   Object.assign(s,{cameraStream:null,micSource:null,analyser:null,isCamera:false});
   activeCameraIdx=-1;
@@ -1824,8 +1860,8 @@ function addTrackBadge(card, num) {
 async function showPendingTake(idx, blobUrl, buffer, ext, samples) {
   const ctx = await getAudioCtx();
   const s = slots[idx];
-  // Stop camera stream that was still running during recording
-  if (s.cameraStream) { s.cameraStream.getTracks().forEach(t=>t.stop()); s.cameraStream=null; }
+  // Release the slot reference but keep the shared physical capture session open.
+  if (s.cameraStream) { s.cameraStream=null; }
   if (s.micSource)    { s.micSource.disconnect(); s.micSource=null; }
   if (s.analyser)     { s.analyser.disconnect(); s.analyser=null; }
   if (activeCameraIdx===idx) activeCameraIdx=-1;

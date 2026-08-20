@@ -19,10 +19,25 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Build Mac universal DMG
-        run: npx electron-builder --mac dmg --universal --publish never
+      - name: Build Mac universal app
+        run: npx electron-builder --mac --dir --universal --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      - name: Bind the complete app identity and create DMG
+        run: |
+          APP="dist/mac-universal/Multi-Track Music.app"
+          VERSION="${GITHUB_REF_NAME#v}"
+          xattr -dr com.apple.FinderInfo "$APP" 2>/dev/null || true
+          xattr -dr com.apple.ResourceFork "$APP" 2>/dev/null || true
+          codesign --force --deep --sign - \
+            --identifier com.multitrackmusic.app \
+            --entitlements entitlements.mac.plist \
+            --options runtime "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          hdiutil create -srcfolder "$APP" \
+            -volname "Multi-Track Music $VERSION" \
+            -format UDZO -ov \
+            "dist/MultiTrackMusic-$VERSION-signed-universal.dmg"
       - name: Upload Mac DMG to release
         uses: softprops/action-gh-release@v2
         with:

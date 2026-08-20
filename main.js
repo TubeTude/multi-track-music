@@ -64,11 +64,18 @@ app.whenReady().then(async () => {
 });
 
 function createWindow() {
+  const isMac = process.platform === 'darwin';
   win = new BrowserWindow({
     show: false,
-    fullscreen: true,
+    fullscreen: isMac,
+    width: 1440,
+    height: 900,
+    minWidth: 960,
+    minHeight: 640,
+    resizable: true,
+    frame: true,
     backgroundColor: '#000000',
-    titleBarStyle: 'hiddenInset',
+    ...(isMac ? { titleBarStyle: 'hiddenInset' } : {}),
     icon: ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
