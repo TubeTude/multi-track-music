@@ -1154,6 +1154,7 @@ async function getAudioCtx() {
 let selectedVideoDeviceId = null;
 let selectedAudioDeviceId = null;
 let mediaPermissionRequest = null;
+let mediaStreamAcquisition = null;
 const reusableMediaStreams = new Map();
 
 function cleanAudioConstraints(deviceId = null) {
@@ -1196,24 +1197,35 @@ async function getReusableMediaStream(videoConstraints, audioConstraints) {
   const key = mediaStreamKey(selectedVideoDeviceId, selectedAudioDeviceId);
   let source = reusableMediaStreams.get(key);
 
-  if (!source || source.getTracks().some(track => track.readyState === 'ended')) {
+  if (source && source.getTracks().every(track => track.readyState === 'live')) {
+    return source;
+  }
+
+  // Every slot awaits the same in-flight acquisition. Without this lock, fast
+  // taps can all reach getUserMedia before the first stream is cached, causing
+  // macOS to display one permission dialog per track.
+  if (mediaStreamAcquisition) return mediaStreamAcquisition;
+
+  mediaStreamAcquisition = (async () => {
     const initial = await requestMediaPermissionOnce();
     const initialVideoId = initial?.getVideoTracks()[0]?.getSettings().deviceId || null;
     const initialAudioId = initial?.getAudioTracks()[0]?.getSettings().deviceId || null;
-    if (initial && mediaStreamKey(initialVideoId, initialAudioId) === key) {
-      source = initial;
-    } else {
-      source = cacheMediaStream(await navigator.mediaDevices.getUserMedia({
-        video: videoConstraints,
-        audio: audioConstraints,
-      }));
-      reusableMediaStreams.set(key, source);
-    }
+    if (initial && mediaStreamKey(initialVideoId, initialAudioId) === key) return initial;
+
+    const acquired = cacheMediaStream(await navigator.mediaDevices.getUserMedia({
+      video: videoConstraints,
+      audio: audioConstraints,
+    }));
+    reusableMediaStreams.set(key, acquired);
+    return acquired;
+  })();
+
+  try {
+    source = await mediaStreamAcquisition;
+  } finally {
+    mediaStreamAcquisition = null;
   }
 
-  // Keep one physical capture session alive for the whole app. Electron can end
-  // the underlying macOS session when the final clone is stopped, which makes an
-  // unsigned build ask for microphone permission again on the next slot.
   return source;
 }
 
@@ -1302,6 +1314,19 @@ document.getElementById('btnDevStart').addEventListener('click', async () => {
   const audSel = document.getElementById('audioSelect');
   selectedVideoDeviceId = camSel.value || null;
   selectedAudioDeviceId = audSel.value || null;
+
+  // Acquire the chosen pair once here. Track buttons only reuse this approved
+  // session and never initiate their own parallel permission requests.
+  try {
+    const videoConstraints = selectedVideoDeviceId
+      ? { deviceId:{ exact:selectedVideoDeviceId } }
+      : { facingMode:'user', width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30} };
+    await getReusableMediaStream(videoConstraints, cleanAudioConstraints(selectedAudioDeviceId));
+  } catch (error) {
+    console.error('Selected media devices:', error);
+    showToast('⚠ Camera or microphone could not be opened', true);
+    return;
+  }
 
   const result = document.getElementById('btnDevStart')._pending;
 

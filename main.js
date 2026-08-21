@@ -87,8 +87,12 @@ function createWindow() {
 
   win.once('ready-to-show', () => win.show());
 
+  const allowedMediaPermissions = new Set(['media', 'camera', 'microphone', 'display-capture']);
   session.defaultSession.setPermissionRequestHandler((_wc, permission, cb) => {
-    cb(['media', 'camera', 'microphone', 'display-capture'].includes(permission));
+    cb(allowedMediaPermissions.has(permission));
+  });
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => {
+    return allowedMediaPermissions.has(permission);
   });
 
   win.loadFile('index.html');
