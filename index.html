@@ -1116,12 +1116,29 @@ function startVuLoop() {
 /* ════════════════════════════════════════════════════
    AUDIO CONTEXT + WORKLET
 ════════════════════════════════════════════════════ */
-let audioCtx=null, masterGain=null;
+let audioCtx=null, masterGain=null, masterLimiter=null, silentMonitor=null;
 async function getAudioCtx() {
   if (!audioCtx) {
-    audioCtx   = new AudioContext({ sampleRate:48000, latencyHint:'interactive' });
+    // Let CoreAudio/Windows choose the hardware-native rate. Forcing 48 kHz can
+    // add an unnecessary real-time resampling stage when an interface is at 44.1 kHz.
+    audioCtx   = new AudioContext({ latencyHint:'interactive' });
     masterGain = audioCtx.createGain();
-    masterGain.connect(audioCtx.destination);
+    masterGain.gain.value = 0.85; // summing headroom for several active tracks
+    masterLimiter = audioCtx.createDynamicsCompressor();
+    masterLimiter.threshold.value = -1;
+    masterLimiter.knee.value = 0;
+    masterLimiter.ratio.value = 20;
+    masterLimiter.attack.value = 0.003;
+    masterLimiter.release.value = 0.08;
+    masterGain.connect(masterLimiter);
+    masterLimiter.connect(audioCtx.destination);
+
+    // Keep metering nodes in a live graph without sending the microphone to the
+    // speakers. Audible software monitoring plus interface direct monitoring is
+    // a classic source of hollow, sweeping comb-filter distortion.
+    silentMonitor = audioCtx.createGain();
+    silentMonitor.gain.value = 0;
+    silentMonitor.connect(audioCtx.destination);
     const blob = new Blob([WORKLET_SRC], {type:'application/javascript'});
     const url  = URL.createObjectURL(blob);
     await audioCtx.audioWorklet.addModule(url);
@@ -1139,6 +1156,17 @@ let selectedAudioDeviceId = null;
 let mediaPermissionRequest = null;
 const reusableMediaStreams = new Map();
 
+function cleanAudioConstraints(deviceId = null) {
+  return {
+    ...(deviceId ? { deviceId:{ exact:deviceId } } : {}),
+    echoCancellation:false,
+    noiseSuppression:false,
+    autoGainControl:false,
+    channelCount:{ ideal:1 },
+    sampleRate:{ ideal:48000 },
+  };
+}
+
 function mediaStreamKey(videoDeviceId, audioDeviceId) {
   return `${videoDeviceId || 'default'}::${audioDeviceId || 'default'}`;
 }
@@ -1155,7 +1183,9 @@ function cacheMediaStream(stream) {
 function requestMediaPermissionOnce() {
   if (!mediaPermissionRequest) {
     mediaPermissionRequest = navigator.mediaDevices
-      .getUserMedia({ video:true, audio:true })
+      // Request clean capture from the very first stream. This stream may be
+      // reused later, so audio:true would silently preserve Chromium voice DSP.
+      .getUserMedia({ video:true, audio:cleanAudioConstraints() })
       .then(cacheMediaStream)
       .catch(() => null);
   }
@@ -1386,6 +1416,43 @@ async function clearTakeAndActivateCamera(idx) {
   await activateCamera(idx);
 }
 
+// Recover a slot left in an inconsistent state by an interrupted recording.
+// This only resets the in-memory player graph; files in the project folder are
+// deliberately untouched and can be loaded again by reopening the folder.
+async function resetTrackSlot(idx) {
+  if (isRecording) {
+    showToast('⚠ Stop recording before resetting a track', true);
+    return;
+  }
+  const s = slots[idx];
+  if (!s) return;
+  stopPlayback();
+  const sourceIdx = displaySourceMap[idx] ?? idx;
+  if (s.videoRec || s.wavRec) {
+    showToast('⚠ Track is still finalizing — try again in a moment', true);
+    return;
+  }
+  if (s.playbackNode) { try { s.playbackNode.stop(); } catch(_) {} }
+  try { s.micSource?.disconnect(); } catch(_) {}
+  try { s.analyser?.disconnect(); } catch(_) {}
+  try { s.videoEl?.pause(); } catch(_) {}
+  if (s.recordedSamples && !s.isPending) takeCount = Math.max(0, takeCount - 1);
+  if (activeCameraIdx === idx) activeCameraIdx = -1;
+  savedSlots[sourceIdx] = null;
+  Object.assign(s, {
+    analyser:null, videoEl:null, drawEl:null, isImage:false,
+    isCamera:false, cameraStream:null, micSource:null,
+    videoRec:null, wavRec:null, recordedSamples:null, playbackNode:null,
+    isPending:false, pendingBuffer:null, pendingExt:null,
+  });
+  s.card.innerHTML = '';
+  s.card.className = 'track-card empty';
+  s.card.appendChild(makeTapHint());
+  refreshVu(s);
+  refreshExportBtn();
+  showToast(`✓ Track ${sourceIdx + 1} reset — saved files were not deleted`);
+}
+
 /* ════════════════════════════════════════════════════
    IMAGE SLOTS
 ════════════════════════════════════════════════════ */
@@ -1519,12 +1586,7 @@ async function activateCamera(idx) {
     const videoConstraints = selectedVideoDeviceId
       ? { deviceId:{ exact:selectedVideoDeviceId } }
       : { facingMode:'user', width:{ideal:1920}, height:{ideal:1080}, frameRate:{ideal:30} };
-    const audioConstraints = selectedAudioDeviceId
-      ? { deviceId:{ exact:selectedAudioDeviceId },
-          echoCancellation:false, noiseSuppression:false, autoGainControl:false,
-          sampleRate:48000, channelCount:1, latency:0 }
-      : { echoCancellation:false, noiseSuppression:false, autoGainControl:false,
-          sampleRate:48000, channelCount:1, latency:0 };
+    const audioConstraints = cleanAudioConstraints(selectedAudioDeviceId);
 
     const stream = await getReusableMediaStream(videoConstraints, audioConstraints);
     s.card.innerHTML=''; s.card.classList.remove('empty'); s.card.classList.add('camera-active');
@@ -1535,7 +1597,7 @@ async function activateCamera(idx) {
 
     const micSrc=ctx.createMediaStreamSource(stream);
     const analyser=ctx.createAnalyser(); analyser.fftSize=256;
-    micSrc.connect(analyser); analyser.connect(masterGain);
+    micSrc.connect(analyser); analyser.connect(silentMonitor);
 
     s.videoEl=vid; // store camera video so FS canvas can draw it
     s.cameraStream=stream; s.micSource=micSrc;
@@ -2508,10 +2570,11 @@ async function ensureTrackFx(idx) {
 
   // Reconnect this slot's analyser into our chain
   const s = slots[idx];
-  if (s && s.analyser) {
+  // Never route a live capture source into the audible FX/master path. Mixer
+  // processing applies when the recorded track is played back.
+  if (s && s.analyser && !s.isCamera) {
     try { s.analyser.disconnect(); } catch(_) {}
     s.analyser.connect(eq);
-    eq.connect(comp); // main chain entry already wired above
   }
   return fx;
 }
@@ -2648,8 +2711,20 @@ function buildMixerStrips(n) {
     addBtn.textContent = '+';
     addBtn.addEventListener('click', () => fsAddTrack(i));
 
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'mx-add-btn';
+    resetBtn.title = 'Reset a glitched track (saved files stay safe)';
+    resetBtn.textContent = '↺';
+    resetBtn.addEventListener('click', () => {
+      const sourceIdx = displaySourceMap[i] ?? i;
+      if (confirm(`Reset track ${sourceIdx + 1}? Saved files will not be deleted.`)) {
+        resetTrackSlot(i);
+      }
+    });
+
     topRow.appendChild(soloBtn);
     topRow.appendChild(addBtn);
+    topRow.appendChild(resetBtn);
 
     // ── Track number ─────────────────────────────────────────────────────
     const num = document.createElement('div');
@@ -2801,7 +2876,8 @@ document.getElementById('mxBtnExport').addEventListener('click', exportReel);
 document.querySelectorAll('.mx-knob').forEach(knob => {
   makeKnobDraggable(knob, v => {
     if (knob.dataset.knob === '2') {
-      if (masterGain) masterGain.gain.setTargetAtTime(v * 1.5, audioCtx?.currentTime || 0, 0.02);
+      // Unity is the top of the master control; the limiter catches only peaks.
+      if (masterGain) masterGain.gain.setTargetAtTime(v, audioCtx?.currentTime || 0, 0.02);
     }
   });
 });
